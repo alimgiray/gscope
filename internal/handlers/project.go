@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/alimgiray/gscope/internal/middleware"
@@ -12,14 +13,22 @@ import (
 )
 
 type ProjectHandler struct {
-	projectService *services.ProjectService
-	userService    *services.UserService
+	projectService           *services.ProjectService
+	userService              *services.UserService
+	scoreSettingsService     *services.ScoreSettingsService
+	excludedExtensionService *services.ExcludedExtensionService
+	githubRepoService        *services.GitHubRepositoryService
 }
 
-func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService) *ProjectHandler {
+func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
+	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
+	githubRepoService *services.GitHubRepositoryService) *ProjectHandler {
 	return &ProjectHandler{
-		projectService: projectService,
-		userService:    userService,
+		projectService:           projectService,
+		userService:              userService,
+		scoreSettingsService:     scoreSettingsService,
+		excludedExtensionService: excludedExtensionService,
+		githubRepoService:        githubRepoService,
 	}
 }
 
@@ -148,42 +157,6 @@ func (h *ProjectHandler) GetProjectByID(c *gin.Context) {
 	})
 }
 
-// DeleteProject handles project deletion
-func (h *ProjectHandler) DeleteProject(c *gin.Context) {
-	session := middleware.GetSession(c)
-	if session == nil {
-		c.Redirect(http.StatusFound, "/login")
-		return
-	}
-
-	projectID := c.Param("id")
-	if projectID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID is required"})
-		return
-	}
-
-	// Check if project exists and belongs to user
-	project, err := h.projectService.GetProjectByID(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-		return
-	}
-
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-		return
-	}
-
-	// Delete the project
-	if err := h.projectService.DeleteProject(projectID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Project deleted successfully"})
-}
-
 // ViewProject displays a single project page
 func (h *ProjectHandler) ViewProject(c *gin.Context) {
 	session := middleware.GetSession(c)
@@ -223,10 +196,31 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		return
 	}
 
+	// Get project repositories
+	projectRepos, err := h.githubRepoService.GetProjectRepositories(projectID)
+	if err != nil {
+		projectRepos = []*models.ProjectRepository{}
+	}
+
+	// Get GitHub repository details for each project repository
+	var repositories []map[string]interface{}
+	for _, projectRepo := range projectRepos {
+		githubRepo, err := h.githubRepoService.GetGitHubRepository(projectRepo.GithubRepoID)
+		if err != nil {
+			continue
+		}
+
+		repositories = append(repositories, map[string]interface{}{
+			"ProjectRepo": projectRepo,
+			"GitHubRepo":  githubRepo,
+		})
+	}
+
 	data := gin.H{
-		"Title":   project.Name,
-		"User":    session,
-		"Project": project,
+		"Title":        project.Name,
+		"User":         session,
+		"Project":      project,
+		"Repositories": repositories,
 	}
 
 	c.HTML(http.StatusOK, "project_view", data)
@@ -271,11 +265,417 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		return
 	}
 
+	// Get score settings
+	scoreSettings, err := h.scoreSettingsService.GetScoreSettingsByProjectID(projectID)
+	if err != nil {
+		// If no score settings found, create default ones
+		scoreSettings = models.NewScoreSettings(projectID)
+	}
+
+	// Get excluded extensions
+	excludedExtensions, err := h.excludedExtensionService.GetExcludedExtensionsByProjectID(projectID)
+	if err != nil {
+		excludedExtensions = []*models.ExcludedExtension{}
+	}
+
 	data := gin.H{
-		"Title":   "Project Settings",
-		"User":    session,
-		"Project": project,
+		"Title":              "Project Settings",
+		"User":               session,
+		"Project":            project,
+		"ScoreSettings":      scoreSettings,
+		"ExcludedExtensions": excludedExtensions,
 	}
 
 	c.HTML(http.StatusOK, "project_settings", data)
+}
+
+// UpdateProjectName handles project name updates
+func (h *ProjectHandler) UpdateProjectName(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	name := strings.TrimSpace(c.PostForm("name"))
+
+	if name == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project name is required",
+		})
+		return
+	}
+
+	// Get project and verify ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	// Update project name
+	project.Name = name
+	if err := h.projectService.UpdateProject(project); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to update project name: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
+}
+
+// UpdateScoreSettings handles score settings updates
+func (h *ProjectHandler) UpdateScoreSettings(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Parse form values
+	additions, _ := strconv.Atoi(c.PostForm("additions"))
+	deletions, _ := strconv.Atoi(c.PostForm("deletions"))
+	commits, _ := strconv.Atoi(c.PostForm("commits"))
+	pullRequests, _ := strconv.Atoi(c.PostForm("pull_requests"))
+	comments, _ := strconv.Atoi(c.PostForm("comments"))
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	// Get or create score settings
+	scoreSettings, err := h.scoreSettingsService.GetScoreSettingsByProjectID(projectID)
+	if err != nil {
+		scoreSettings = models.NewScoreSettings(projectID)
+	}
+
+	// Update values
+	scoreSettings.Additions = additions
+	scoreSettings.Deletions = deletions
+	scoreSettings.Commits = commits
+	scoreSettings.PullRequests = pullRequests
+	scoreSettings.Comments = comments
+
+	if err := h.scoreSettingsService.UpdateScoreSettings(scoreSettings); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to update score settings: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
+}
+
+// AddExcludedExtension handles adding excluded extensions
+func (h *ProjectHandler) AddExcludedExtension(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	extension := strings.TrimSpace(c.PostForm("extension"))
+
+	if extension == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Extension is required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	if err := h.excludedExtensionService.CreateExcludedExtension(projectID, extension); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to add excluded extension: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
+}
+
+// DeleteExcludedExtension handles removing excluded extensions
+func (h *ProjectHandler) DeleteExcludedExtension(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	extensionID := c.Param("extension_id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	if err := h.excludedExtensionService.DeleteExcludedExtension(extensionID); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to delete excluded extension: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
+}
+
+// DeleteProject handles project deletion
+func (h *ProjectHandler) DeleteProject(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to delete this project.",
+		})
+		return
+	}
+
+	// Delete the project (this will cascade delete score settings and excluded extensions)
+	if err := h.projectService.DeleteProject(projectID); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to delete project: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/dashboard")
+}
+
+// FetchRepositories fetches repositories from GitHub and associates them with the project
+func (h *ProjectHandler) FetchRepositories(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	// Get GitHub token from database
+	user, err := h.userService.GetUserByID(session.UserID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to retrieve user data.",
+		})
+		return
+	}
+
+	if user.GitHubAccessToken == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "GitHub Token Required",
+			"User":  session,
+			"Error": "GitHub token not found. Please login with GitHub again.",
+		})
+		return
+	}
+
+	// Fetch repositories from GitHub
+	if err := h.githubRepoService.FetchUserRepositories(projectID, user.GitHubAccessToken); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error Fetching Repositories",
+			"User":  session,
+			"Error": "Failed to fetch repositories from GitHub: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID)
+}
+
+// ToggleRepositoryTracking toggles the tracking status of a project repository
+func (h *ProjectHandler) ToggleRepositoryTracking(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	repositoryID := c.Param("repository_id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	// Get the project repository
+	projectRepo, err := h.githubRepoService.GetProjectRepository(repositoryID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Repository Not Found",
+			"User":  session,
+			"Error": "The requested repository could not be found.",
+		})
+		return
+	}
+
+	// Verify the repository belongs to the project
+	if projectRepo.ProjectID != projectID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "This repository does not belong to the specified project.",
+		})
+		return
+	}
+
+	// Toggle the tracking status
+	projectRepo.IsTracked = !projectRepo.IsTracked
+
+	if err := h.githubRepoService.UpdateProjectRepository(projectRepo); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to update repository tracking status: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID)
 }

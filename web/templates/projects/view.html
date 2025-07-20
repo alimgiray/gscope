@@ -8,18 +8,122 @@
     </div>
     {{if .Project.Description}}
     <p>{{.Project.Description}}</p>
-    {{else}}
-    <p>No description available.</p>
     {{end}}
     <div class="text-xs text-gray-400 mt-2">
         Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}
     </div>
+    <div class="mt-4 flex gap-2">
+        <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
+            <button type="submit" class="btn" style="background: #059669; color: white;">Fetch Repositories</button>
+        </form>
+        <button class="btn" style="background: #7c3aed; color: white;" onclick="cloneAllRepositories()">
+            Clone All
+        </button>
+    </div>
 </div>
 
-<div class="card mt-2">
-    <div class="card-header">Project Details</div>
-    <p>Project page content will be added here.</p>
+<!-- Repositories Section -->
+<div class="card mt-4">
+    <div class="card-header">Repositories</div>
+    <div class="card-body">
+        {{if .Repositories}}
+            <div class="space-y-2">
+                {{range .Repositories}}
+                <div class="flex justify-between items-center p-2 border border-gray-600 rounded" data-clone-url="{{.GitHubRepo.CloneURL}}" data-repo-name="{{.GitHubRepo.FullName}}">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-mono">{{.GitHubRepo.FullName}}</span>
+                            {{if .ProjectRepo.IsTracked}}
+                                <span class="text-xs bg-green-600 text-white px-1 rounded">Tracked</span>
+                            {{else}}
+                                <span class="text-xs bg-gray-600 text-white px-1 rounded">Untracked</span>
+                            {{end}}
+                            {{if .ProjectRepo.IsAnalyzed}}
+                                <span class="text-xs bg-blue-600 text-white px-1 rounded">Analyzed</span>
+                            {{end}}
+                        </div>
+                        {{if .GitHubRepo.Description}}
+                            <p class="text-xs text-gray-400 mt-1">{{.GitHubRepo.Description}}</p>
+                        {{end}}
+                        <div class="flex gap-4 text-xs text-gray-400 mt-1">
+                            <span>⭐ {{.GitHubRepo.Stars}}</span>
+                            <span>🍴 {{.GitHubRepo.Forks}}</span>
+                            {{if .GitHubRepo.Language}}
+                                <span>{{.GitHubRepo.Language}}</span>
+                            {{end}}
+                            {{if .GitHubRepo.Private}}
+                                <span>🔒 Private</span>
+                            {{end}}
+                        </div>
+                    </div>
+                    <div class="flex gap-1">
+                        <a href="{{.GitHubRepo.URL}}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">View</a>
+                        <button class="text-xs text-purple-400 hover:text-purple-300" onclick="cloneRepository('{{.GitHubRepo.CloneURL}}', '{{.GitHubRepo.FullName}}')">
+                            Clone
+                        </button>
+                        <form method="POST" action="/projects/{{$.Project.ID}}/repositories/{{.ProjectRepo.ID}}/toggle-track" class="inline">
+                            <button type="submit" class="text-xs {{if .ProjectRepo.IsTracked}}text-red-400 hover:text-red-300{{else}}text-green-400 hover:text-green-300{{end}}">
+                                {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        {{else}}
+            <p class="text-xs text-gray-400">No repositories found. Click "Fetch Repositories" to import your GitHub repositories.</p>
+        {{end}}
+    </div>
 </div>
 
 {{template "footer" .}}
+
+<script>
+function cloneRepository(cloneUrl, repoName) {
+    // Copy clone URL to clipboard
+    navigator.clipboard.writeText(cloneUrl).then(function() {
+        alert('Clone URL copied to clipboard for: ' + repoName + '\n\nURL: ' + cloneUrl);
+    }).catch(function(err) {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = cloneUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('Clone URL copied to clipboard for: ' + repoName + '\n\nURL: ' + cloneUrl);
+    });
+}
+
+function cloneAllRepositories() {
+    const repositories = document.querySelectorAll('[data-clone-url]');
+    if (repositories.length === 0) {
+        alert('No repositories found to clone.');
+        return;
+    }
+    
+    let cloneUrls = [];
+    repositories.forEach(function(repo) {
+        const cloneUrl = repo.getAttribute('data-clone-url');
+        const repoName = repo.getAttribute('data-repo-name');
+        cloneUrls.push(repoName + ': ' + cloneUrl);
+    });
+    
+    const allUrls = cloneUrls.join('\n\n');
+    
+    // Copy all clone URLs to clipboard
+    navigator.clipboard.writeText(allUrls).then(function() {
+        alert('All repository clone URLs copied to clipboard!\n\nTotal repositories: ' + repositories.length);
+    }).catch(function(err) {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = allUrls;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('All repository clone URLs copied to clipboard!\n\nTotal repositories: ' + repositories.length);
+    });
+}
+</script>
 {{end}} 

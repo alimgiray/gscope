@@ -38,6 +38,11 @@ func main() {
 	projectRepo := repositories.NewProjectRepository(database.DB)
 	scoreSettingsRepo := repositories.NewScoreSettingsRepository(database.DB)
 	scoreSettingsService := services.NewScoreSettingsService(scoreSettingsRepo)
+	excludedExtensionRepo := repositories.NewExcludedExtensionRepository(database.DB)
+	excludedExtensionService := services.NewExcludedExtensionService(excludedExtensionRepo)
+	githubRepoRepo := repositories.NewGitHubRepositoryRepository(database.DB)
+	projectRepoRepo := repositories.NewProjectRepositoryRepository(database.DB)
+	githubRepoService := services.NewGitHubRepositoryService(githubRepoRepo, projectRepoRepo)
 	projectService := services.NewProjectService(projectRepo, scoreSettingsService)
 
 	// Initialize router
@@ -50,7 +55,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService)
 	loadTemplates(router)
 
 	// Setup server
@@ -76,12 +81,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -105,8 +110,15 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 	{
 		projects.GET("/create", projectHandler.CreateProjectForm)
 		projects.POST("/create", projectHandler.CreateProject)
-		projects.GET("/:id/settings", projectHandler.ProjectSettings)
 		projects.GET("/:id", projectHandler.ViewProject)
+		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
+		projects.POST("/:id/repositories/:repository_id/toggle-track", projectHandler.ToggleRepositoryTracking)
+		projects.GET("/:id/settings", projectHandler.ProjectSettings)
+		projects.POST("/:id/settings/name", projectHandler.UpdateProjectName)
+		projects.POST("/:id/settings/scores", projectHandler.UpdateScoreSettings)
+		projects.POST("/:id/settings/extensions", projectHandler.AddExcludedExtension)
+		projects.POST("/:id/settings/extensions/:extension_id/delete", projectHandler.DeleteExcludedExtension)
+		projects.POST("/:id/settings/delete", projectHandler.DeleteProject)
 	}
 
 	// Health check endpoint
