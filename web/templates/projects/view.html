@@ -41,9 +41,15 @@
                             {{if .ProjectRepo.IsAnalyzed}}
                                 <span class="text-xs bg-blue-600 text-white px-1 rounded">Analyzed</span>
                             {{end}}
+                            {{if .GitHubRepo.IsCloned}}
+                                <span class="text-xs bg-purple-600 text-white px-1 rounded">Cloned</span>
+                            {{end}}
                         </div>
                         {{if .GitHubRepo.Description}}
                             <p class="text-xs text-gray-400 mt-1">{{.GitHubRepo.Description}}</p>
+                        {{end}}
+                        {{if .GitHubRepo.IsCloned}}
+                            <p class="text-xs text-gray-400 mt-1">Last cloned: {{.GitHubRepo.LastCloned.Format "2006-01-02 15:04:05"}}</p>
                         {{end}}
                         <div class="flex gap-4 text-xs text-gray-400 mt-1">
                             <span>⭐ {{.GitHubRepo.Stars}}</span>
@@ -58,9 +64,11 @@
                     </div>
                     <div class="flex gap-1">
                         <a href="{{.GitHubRepo.URL}}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">View</a>
-                        <button class="text-xs text-purple-400 hover:text-purple-300" onclick="cloneRepository('{{.GitHubRepo.CloneURL}}', '{{.GitHubRepo.FullName}}')">
-                            Clone
-                        </button>
+                        {{if .ProjectRepo.IsTracked}}
+                            <button class="text-xs text-purple-400 hover:text-purple-300" onclick="cloneRepository('{{.GitHubRepo.CloneURL}}', '{{.GitHubRepo.FullName}}')">
+                                {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
+                            </button>
+                        {{end}}
                         <form method="POST" action="/projects/{{$.Project.ID}}/repositories/{{.ProjectRepo.ID}}/toggle-track" class="inline">
                             <button type="submit" class="text-xs {{if .ProjectRepo.IsTracked}}text-red-400 hover:text-red-300{{else}}text-green-400 hover:text-green-300{{end}}">
                                 {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
@@ -103,17 +111,28 @@ function cloneAllRepositories() {
     }
     
     let cloneUrls = [];
+    let trackedCount = 0;
     repositories.forEach(function(repo) {
-        const cloneUrl = repo.getAttribute('data-clone-url');
-        const repoName = repo.getAttribute('data-repo-name');
-        cloneUrls.push(repoName + ': ' + cloneUrl);
+        // Check if this repository is tracked (has a clone button)
+        const cloneButton = repo.querySelector('button[onclick*="cloneRepository"]');
+        if (cloneButton) {
+            const cloneUrl = repo.getAttribute('data-clone-url');
+            const repoName = repo.getAttribute('data-repo-name');
+            cloneUrls.push(repoName + ': ' + cloneUrl);
+            trackedCount++;
+        }
     });
+    
+    if (trackedCount === 0) {
+        alert('No tracked repositories found to clone. Please track some repositories first.');
+        return;
+    }
     
     const allUrls = cloneUrls.join('\n\n');
     
     // Copy all clone URLs to clipboard
     navigator.clipboard.writeText(allUrls).then(function() {
-        alert('All repository clone URLs copied to clipboard!\n\nTotal repositories: ' + repositories.length);
+        alert('All tracked repository clone URLs copied to clipboard!\n\nTotal tracked repositories: ' + trackedCount);
     }).catch(function(err) {
         // Fallback for older browsers
         const textArea = document.createElement('textarea');
@@ -122,7 +141,7 @@ function cloneAllRepositories() {
         textArea.select();
         document.execCommand('copy');
         document.body.removeChild(textArea);
-        alert('All repository clone URLs copied to clipboard!\n\nTotal repositories: ' + repositories.length);
+        alert('All tracked repository clone URLs copied to clipboard!\n\nTotal tracked repositories: ' + trackedCount);
     });
 }
 </script>
