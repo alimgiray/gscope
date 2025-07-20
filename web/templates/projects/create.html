@@ -1,0 +1,26 @@
+{{define "create_project"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="card-header">Create New Project</div>
+    <p>Start a new project by giving it a name</p>
+    
+    <form method="POST" action="/projects/create">
+        <div class="mb-2">
+            <label for="name">Project Name</label>
+            <input type="text" class="form-control" id="name" name="name" required 
+                   placeholder="Enter project name" value="{{.Project.Name}}">
+            {{if .Error}}
+            <div class="mt-1">{{.Error}}</div>
+            {{end}}
+        </div>
+        
+        <div class="text-center">
+            <button type="submit" class="btn btn-primary">Create Project</button>
+            <a href="/dashboard" class="btn">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{{template "footer" .}}
+{{end}} 

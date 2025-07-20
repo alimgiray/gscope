@@ -1,0 +1,25 @@
+{{define "project_view"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="flex justify-between items-center">
+        <div class="card-header">{{.Project.Name}}</div>
+        <a href="/projects/{{.Project.ID}}/settings" class="text-green-400 hover:text-green-300 text-xs">⚙ Settings</a>
+    </div>
+    {{if .Project.Description}}
+    <p>{{.Project.Description}}</p>
+    {{else}}
+    <p>No description available.</p>
+    {{end}}
+    <div class="text-xs text-gray-400 mt-2">
+        Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">Project Details</div>
+    <p>Project page content will be added here.</p>
+</div>
+
+{{template "footer" .}}
+{{end}} 

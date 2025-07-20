@@ -1,0 +1,133 @@
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+
+	"github.com/alimgiray/gscope/internal/handlers"
+	"github.com/alimgiray/gscope/internal/middleware"
+	"github.com/alimgiray/gscope/internal/repositories"
+	"github.com/alimgiray/gscope/internal/services"
+	"github.com/alimgiray/gscope/pkg/config"
+	"github.com/alimgiray/gscope/pkg/database"
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	// Set Gin mode
+	gin.SetMode(gin.ReleaseMode)
+
+	// Load configuration
+	if err := config.Load(); err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize database
+	if err := database.Init(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer database.Close()
+
+	// Initialize dependencies
+	userRepo := repositories.NewUserRepository(database.DB)
+	userService := services.NewUserService(userRepo)
+	projectRepo := repositories.NewProjectRepository(database.DB)
+	scoreSettingsRepo := repositories.NewScoreSettingsRepository(database.DB)
+	scoreSettingsService := services.NewScoreSettingsService(scoreSettingsRepo)
+	projectService := services.NewProjectService(projectRepo, scoreSettingsService)
+
+	// Initialize router
+	router := gin.Default()
+
+	// Apply middleware
+	router.Use(middleware.SessionMiddleware())
+
+	// Setup static files
+	router.Static("/static", "./web/static")
+
+	// Setup routes
+	setupRoutes(router, userService, projectService)
+	loadTemplates(router)
+
+	// Setup server
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: router,
+	}
+
+	// Graceful shutdown
+	go func() {
+		log.Printf("Server starting on :8080")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+	log.Println("Server stopped")
+}
+
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService) {
+	// Initialize handlers
+	homeHandler := handlers.NewHomeHandler(userService)
+	authHandler := handlers.NewAuthHandler(userService)
+	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService)
+	healthHandler := handlers.NewHealthHandler()
+
+	// Home page
+	router.GET("/", homeHandler.Index)
+
+	// Auth routes
+	router.GET("/login", authHandler.Login)
+	router.GET("/logout", authHandler.Logout)
+	router.GET("/auth/github", authHandler.GitHubLogin)
+	router.GET("/auth/github/callback", authHandler.GitHubCallback)
+
+	// Protected routes
+	dashboard := router.Group("/dashboard")
+	dashboard.Use(middleware.AuthRequired())
+	{
+		dashboard.GET("/", dashboardHandler.Dashboard)
+	}
+
+	projects := router.Group("/projects")
+	projects.Use(middleware.AuthRequired())
+	{
+		projects.GET("/create", projectHandler.CreateProjectForm)
+		projects.POST("/create", projectHandler.CreateProject)
+		projects.GET("/:id/settings", projectHandler.ProjectSettings)
+		projects.GET("/:id", projectHandler.ViewProject)
+	}
+
+	// Health check endpoint
+	router.GET("/health", healthHandler.HealthCheck)
+}
+
+func loadTemplates(router *gin.Engine) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatal("Couldn't get working directory:", err)
+	}
+	log.Println("Working dir:", cwd)
+
+	router.LoadHTMLFiles(
+		filepath.Join(cwd, "web/templates/layouts/header.html"),
+		filepath.Join(cwd, "web/templates/layouts/footer.html"),
+		filepath.Join(cwd, "web/templates/index.html"),
+		filepath.Join(cwd, "web/templates/login.html"),
+		filepath.Join(cwd, "web/templates/dashboard.html"),
+		filepath.Join(cwd, "web/templates/projects/create.html"),
+		filepath.Join(cwd, "web/templates/projects/view.html"),
+		filepath.Join(cwd, "web/templates/projects/settings.html"),
+	)
+}

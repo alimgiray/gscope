@@ -1,0 +1,27 @@
+{{define "header" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GScope</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
+</head>
+<body>
+    <nav class="bg-black border-b border-green-500 px-4 py-2">
+        <div class="flex justify-between items-center">
+            <a href="/" class="text-green-400 text-sm font-mono">GScope</a>
+            <div class="flex space-x-4">
+                {{if .User}}
+                <a href="/dashboard" class="text-green-400 text-xs hover:text-green-300">Dashboard</a>
+                <a href="/logout" class="text-green-400 text-xs hover:text-green-300">Logout</a>
+                {{else}}
+                <a href="/login" class="text-green-400 text-xs hover:text-green-300">Login</a>
+                {{end}}
+            </div>
+        </div>
+    </nav>
+    <main class="px-4 py-2"> 
+{{end}}

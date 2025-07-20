@@ -1,0 +1,28 @@
+{{define "dashboard"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="flex justify-between items-center">
+        <span>Welcome, {{.User.Username}}!</span>
+        <a href="/projects/create" class="text-green-400 hover:text-green-300">+ Create Project</a>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">Your Projects</div>
+    {{if .Projects}}
+        {{range .Projects}}
+        <div class="mb-2">
+            <a href="/projects/{{.ID}}" class="text-green-400 hover:text-green-300">→ {{.Name}}</a>
+            {{if .Description}}
+            <span class="text-gray-400 text-xs ml-2">{{.Description}}</span>
+            {{end}}
+        </div>
+        {{end}}
+    {{else}}
+        <p>No projects found. Create your first project to get started.</p>
+    {{end}}
+</div>
+
+{{template "footer" .}}
+{{end}} 

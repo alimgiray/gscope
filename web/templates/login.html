@@ -1,0 +1,28 @@
+{{define "login"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="card-header">Login to GScope</div>
+    <p>Sign in with your GitHub account</p>
+    
+    <div class="text-center">
+        <a href="/auth/github" class="btn btn-primary">Login with GitHub</a>
+    </div>
+    
+    {{if .Error}}
+    <div class="card mt-2">
+        <p>{{.Error}}</p>
+    </div>
+    {{end}}
+    
+    <div class="text-center mt-2">
+        <small>
+            By logging in, you agree to our 
+            <a href="/terms">Terms of Service</a> and 
+            <a href="/privacy">Privacy Policy</a>
+        </small>
+    </div>
+</div>
+
+{{template "footer" .}}
+{{end}} 
