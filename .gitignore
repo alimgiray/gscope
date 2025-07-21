@@ -32,3 +32,6 @@ go.work.sum
 # .vscode/
 
 gscope.db
+
+# Cloned repositories directory
+clones/

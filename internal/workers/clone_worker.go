@@ -7,19 +7,22 @@ import (
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/alimgiray/gscope/internal/repositories"
+	"github.com/alimgiray/gscope/internal/services"
 )
 
 // CloneWorker handles clone jobs
 type CloneWorker struct {
 	*BaseWorker
-	jobRepo *repositories.JobRepository
+	jobRepo      *repositories.JobRepository
+	cloneService *services.CloneService
 }
 
 // NewCloneWorker creates a new clone worker
-func NewCloneWorker(workerID string, jobRepo *repositories.JobRepository) *CloneWorker {
+func NewCloneWorker(workerID string, jobRepo *repositories.JobRepository, cloneService *services.CloneService) *CloneWorker {
 	return &CloneWorker{
-		BaseWorker: NewBaseWorker(workerID, models.JobTypeClone),
-		jobRepo:    jobRepo,
+		BaseWorker:   NewBaseWorker(workerID, models.JobTypeClone),
+		jobRepo:      jobRepo,
+		cloneService: cloneService,
 	}
 }
 
@@ -68,21 +71,25 @@ func (w *CloneWorker) processCloneJob(ctx context.Context, job *models.Job) {
 		return
 	}
 
-	// TODO: Implement actual clone logic here
-	// For now, just simulate work
-	time.Sleep(2 * time.Second)
-
-	// Simulate potential failure (for demonstration)
-	// In real implementation, this would be based on actual clone success/failure
-	if job.ProjectRepositoryID != nil {
-		// Mark job as completed
-		job.MarkCompleted()
-		log.Printf("Clone worker %s completed job %s", w.WorkerID, job.ID)
-	} else {
-		// Mark job as failed
+	// Check if project repository ID is provided
+	if job.ProjectRepositoryID == nil {
 		job.SetError("Project repository ID is required for clone jobs")
 		job.MarkFailed()
 		log.Printf("Clone worker %s failed job %s: %s", w.WorkerID, job.ID, *job.ErrorMessage)
+		if err := w.jobRepo.Update(job); err != nil {
+			log.Printf("Clone worker %s error updating failed job %s: %v", w.WorkerID, job.ID, err)
+		}
+		return
+	}
+
+	// Perform the actual clone operation
+	if err := w.cloneService.CloneRepository(job); err != nil {
+		job.SetError(err.Error())
+		job.MarkFailed()
+		log.Printf("Clone worker %s failed job %s: %s", w.WorkerID, job.ID, *job.ErrorMessage)
+	} else {
+		job.MarkCompleted()
+		log.Printf("Clone worker %s completed job %s", w.WorkerID, job.ID)
 	}
 
 	if err := w.jobRepo.Update(job); err != nil {

@@ -12,6 +12,12 @@
     <div class="text-xs text-gray-400 mt-2">
         Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}
     </div>
+    <div id="auto-refresh-indicator" class="mt-4 p-2 bg-blue-100 border border-blue-400 text-blue-700 rounded text-xs hidden">
+        🔄 Auto-refreshing every 5 seconds to show job progress...
+    </div>
+    
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
     <div class="mt-4 flex gap-2">
         <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
             <button type="submit" class="btn" style="background: #059669; color: white;">Fetch Repositories</button>
@@ -65,15 +71,33 @@
                     <div class="flex gap-1">
                         <a href="{{.GitHubRepo.URL}}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">View</a>
                         {{if .ProjectRepo.IsTracked}}
-                            <button class="text-xs text-purple-400 hover:text-purple-300" onclick="cloneRepository('{{.GitHubRepo.CloneURL}}', '{{.GitHubRepo.FullName}}')">
-                                {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
-                            </button>
+                            {{if .LatestJob}}
+                                {{if or .LatestJob.IsPending .LatestJob.IsInProgress}}
+                                    <button disabled class="text-xs text-yellow-400 cursor-not-allowed">
+                                        Cloning...
+                                    </button>
+                                {{else if .LatestJob.IsFailed}}
+                                    <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestJob.ErrorMessage}}">
+                                        Retry Clone
+                                    </button>
+                                {{else if .LatestJob.IsCompleted}}
+                                    <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-purple-400 hover:text-purple-300">
+                                        {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
+                                    </button>
+                                {{else}}
+                                    <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-purple-400 hover:text-purple-300">
+                                        {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
+                                    </button>
+                                {{end}}
+                            {{else}}
+                                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-purple-400 hover:text-purple-300">
+                                    {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
+                                </button>
+                            {{end}}
                         {{end}}
-                        <form method="POST" action="/projects/{{$.Project.ID}}/repositories/{{.ProjectRepo.ID}}/toggle-track" class="inline">
-                            <button type="submit" class="text-xs {{if .ProjectRepo.IsTracked}}text-red-400 hover:text-red-300{{else}}text-green-400 hover:text-green-300{{end}}">
-                                {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
-                            </button>
-                        </form>
+                        <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" class="text-xs {{if .ProjectRepo.IsTracked}}text-red-400 hover:text-red-300{{else}}text-green-400 hover:text-green-300{{end}}">
+                            {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
+                        </button>
                     </div>
                 </div>
                 {{end}}
@@ -87,7 +111,175 @@
 {{template "footer" .}}
 
 <script>
-function cloneRepository(cloneUrl, repoName) {
+// Toast functionality
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `p-3 rounded shadow-lg text-white text-sm max-w-sm transform transition-all duration-300 translate-x-full`;
+    
+    // Set background color based on type
+    if (type === 'success') {
+        toast.className += ' bg-green-500';
+    } else if (type === 'error') {
+        toast.className += ' bg-red-500';
+    } else if (type === 'info') {
+        toast.className += ' bg-blue-500';
+    }
+
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    // Animate in
+    setTimeout(() => {
+        toast.classList.remove('translate-x-full');
+    }, 100);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        toast.classList.add('translate-x-full');
+        setTimeout(() => {
+            if (container.contains(toast)) {
+                container.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// Scroll position management
+let scrollPosition = 0;
+
+function saveScrollPosition() {
+    scrollPosition = window.scrollY;
+    // Also save to sessionStorage as backup
+    sessionStorage.setItem('scrollPosition', scrollPosition.toString());
+}
+
+function restoreScrollPosition() {
+    // Try to restore from sessionStorage first
+    const savedPosition = sessionStorage.getItem('scrollPosition');
+    if (savedPosition) {
+        const position = parseInt(savedPosition, 10);
+        if (position > 0) {
+            window.scrollTo(0, position);
+            // Clear the saved position after restoring
+            sessionStorage.removeItem('scrollPosition');
+            return;
+        }
+    }
+    
+    // Fallback to variable if sessionStorage is not available
+    if (scrollPosition > 0) {
+        window.scrollTo(0, scrollPosition);
+    }
+}
+
+// Auto-refresh functionality for active jobs
+function hasActiveJobs() {
+    const activeJobButtons = document.querySelectorAll('button[disabled].text-yellow-400');
+    return activeJobButtons.length > 0;
+}
+
+function showAutoRefreshIndicator() {
+    const indicator = document.getElementById('auto-refresh-indicator');
+    if (indicator) {
+        indicator.classList.remove('hidden');
+    }
+}
+
+function startAutoRefresh() {
+    if (hasActiveJobs()) {
+        console.log('Active jobs detected, starting auto-refresh every 5 seconds');
+        showAutoRefreshIndicator();
+        setTimeout(function() {
+            saveScrollPosition();
+            window.location.reload();
+        }, 5000);
+    }
+}
+
+// Start auto-refresh when page loads if there are active jobs
+document.addEventListener('DOMContentLoaded', function() {
+    // Show toast if there's a message in URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const message = urlParams.get('message');
+    if (message) {
+        showToast(message, 'success');
+        // Clean up URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+    }
+    
+    // Restore scroll position if it was saved
+    restoreScrollPosition();
+    
+    // Start auto-refresh
+    startAutoRefresh();
+});
+
+// AJAX functions for clone and track operations
+function cloneRepository(projectId, repositoryId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    fetch(`/projects/${projectId}/repositories/${repositoryId}/clone`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Clone job created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to create clone job', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to create clone job', 'error');
+    });
+}
+
+function toggleTracking(projectId, repositoryId, currentStatus) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    const isTracked = currentStatus === 'true';
+    fetch(`/projects/${projectId}/repositories/${repositoryId}/toggle-track`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || `Repository ${isTracked ? 'untracked' : 'tracked'} successfully`, 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to update tracking status', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to update tracking status', 'error');
+    });
+}
+
+// Legacy function for copying clone URLs (kept for compatibility)
+function copyCloneUrl(cloneUrl, repoName) {
     // Copy clone URL to clipboard
     navigator.clipboard.writeText(cloneUrl).then(function() {
         alert('Clone URL copied to clipboard for: ' + repoName + '\n\nURL: ' + cloneUrl);

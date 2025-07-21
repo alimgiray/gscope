@@ -18,17 +18,19 @@ type ProjectHandler struct {
 	scoreSettingsService     *services.ScoreSettingsService
 	excludedExtensionService *services.ExcludedExtensionService
 	githubRepoService        *services.GitHubRepositoryService
+	jobService               *services.JobService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
 	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
-	githubRepoService *services.GitHubRepositoryService) *ProjectHandler {
+	githubRepoService *services.GitHubRepositoryService, jobService *services.JobService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:           projectService,
 		userService:              userService,
 		scoreSettingsService:     scoreSettingsService,
 		excludedExtensionService: excludedExtensionService,
 		githubRepoService:        githubRepoService,
+		jobService:               jobService,
 	}
 }
 
@@ -202,7 +204,7 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		projectRepos = []*models.ProjectRepository{}
 	}
 
-	// Get GitHub repository details for each project repository
+	// Get GitHub repository details and job status for each project repository
 	var repositories []map[string]interface{}
 	for _, projectRepo := range projectRepos {
 		githubRepo, err := h.githubRepoService.GetGitHubRepository(projectRepo.GithubRepoID)
@@ -210,17 +212,30 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			continue
 		}
 
+		// Get the latest clone job for this repository
+		var latestJob *models.Job
+		jobs, err := h.jobService.GetJobsByProjectRepository(projectRepo.ID)
+		if err == nil && len(jobs) > 0 {
+			// Get the most recent job (jobs are ordered by created_at DESC)
+			latestJob = jobs[0]
+		}
+
 		repositories = append(repositories, map[string]interface{}{
 			"ProjectRepo": projectRepo,
 			"GitHubRepo":  githubRepo,
+			"LatestJob":   latestJob,
 		})
 	}
+
+	// Get message from query parameter
+	message := c.Query("message")
 
 	data := gin.H{
 		"Title":        project.Name,
 		"User":         session,
 		"Project":      project,
 		"Repositories": repositories,
+		"Message":      message,
 	}
 
 	c.HTML(http.StatusOK, "project_view", data)
@@ -669,13 +684,107 @@ func (h *ProjectHandler) ToggleRepositoryTracking(c *gin.Context) {
 	projectRepo.IsTracked = !projectRepo.IsTracked
 
 	if err := h.githubRepoService.UpdateProjectRepository(projectRepo); err != nil {
-		c.HTML(http.StatusInternalServerError, "error", gin.H{
-			"Title": "Error",
-			"User":  session,
-			"Error": "Failed to update repository tracking status: " + err.Error(),
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to update repository tracking status: " + err.Error(),
 		})
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/projects/"+projectID)
+	// Return success response
+	message := "Repository untracked successfully"
+	if projectRepo.IsTracked {
+		message = "Repository tracked successfully"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": message,
+	})
+}
+
+// CreateCloneJob creates a clone job for a specific repository
+func (h *ProjectHandler) CreateCloneJob(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	projectRepositoryID := c.Param("repository_id")
+
+	// Validate project ID
+	if _, err := uuid.Parse(projectID); err != nil {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Invalid project ID",
+		})
+		return
+	}
+
+	// Validate project repository ID
+	if _, err := uuid.Parse(projectRepositoryID); err != nil {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Invalid project repository ID",
+		})
+		return
+	}
+
+	// Check if user owns the project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Invalid user session",
+		})
+		return
+	}
+
+	if project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Access denied",
+		})
+		return
+	}
+
+	// Create the clone job
+	_, err = h.jobService.CreateCloneJob(projectID, projectRepositoryID)
+	if err != nil {
+		// Check if it's a duplicate job error
+		if strings.Contains(err.Error(), "already in progress or pending") {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "A clone job is already in progress for this repository",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to create clone job: " + err.Error(),
+			})
+		}
+		return
+	}
+
+	// Return success response
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Clone job created successfully",
+	})
 }

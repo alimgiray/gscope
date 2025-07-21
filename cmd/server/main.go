@@ -12,6 +12,7 @@ import (
 	"github.com/alimgiray/gscope/internal/middleware"
 	"github.com/alimgiray/gscope/internal/repositories"
 	"github.com/alimgiray/gscope/internal/services"
+	"github.com/alimgiray/gscope/internal/workers"
 	"github.com/alimgiray/gscope/pkg/config"
 	"github.com/alimgiray/gscope/pkg/database"
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,14 @@ func main() {
 	githubRepoService := services.NewGitHubRepositoryService(githubRepoRepo, projectRepoRepo)
 	projectService := services.NewProjectService(projectRepo, scoreSettingsService)
 
+	// Job and worker services
+	jobRepo := repositories.NewJobRepository(database.DB)
+	jobService := services.NewJobService(jobRepo)
+	cloneService := services.NewCloneService(projectRepo, userRepo, githubRepoRepo, projectRepoRepo)
+
+	// Initialize worker manager
+	workerManager := workers.NewWorkerManager(jobRepo, cloneService)
+
 	// Initialize router
 	router := gin.Default()
 
@@ -55,8 +64,14 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService)
 	loadTemplates(router)
+
+	// Start workers
+	if err := workerManager.StartAll(); err != nil {
+		log.Fatalf("Failed to start workers: %v", err)
+	}
+	defer workerManager.StopAll()
 
 	// Setup server
 	server := &http.Server{
@@ -81,12 +96,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -112,6 +127,7 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/create", projectHandler.CreateProject)
 		projects.GET("/:id", projectHandler.ViewProject)
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
+		projects.POST("/:id/repositories/:repository_id/clone", projectHandler.CreateCloneJob)
 		projects.POST("/:id/repositories/:repository_id/toggle-track", projectHandler.ToggleRepositoryTracking)
 		projects.GET("/:id/settings", projectHandler.ProjectSettings)
 		projects.POST("/:id/settings/name", projectHandler.UpdateProjectName)

@@ -1,35 +1,98 @@
 {{define "index"}}
 {{template "header" .}}
 
-<div class="card">
-    <div class="card-header">Welcome to GScope</div>
-    <p>{{.Message}}</p>
-    <p>This is a Go web application built with MVC architecture, featuring background workers and SQLite database.</p>
-    <a class="btn btn-primary" href="/login">Get Started</a>
-</div>
-
-<div class="row mt-3">
-    <div class="col-6">
-        <div class="card">
-            <div class="card-header">Go Templates</div>
-            <p>Built with Go's powerful template engine for dynamic content rendering.</p>
-        </div>
+<!-- Hero Section -->
+<div class="bg-gradient-to-br from-black to-gray-900 border border-green-400 p-6 mb-6 text-center">
+    <div class="text-lg font-bold text-green-400 mb-2 tracking-wide">
+        <span class="text-green-400 font-bold">$</span> gscope --analyze
     </div>
-    <div class="col-6">
-        <div class="card">
-            <div class="card-header">MVC Architecture</div>
-            <p>Clean separation of concerns with Models, Views, and Controllers.</p>
-        </div>
+    <div class="text-sm text-white mb-3 font-bold">
+        Team Performance & Repository Management Platform
+    </div>
+    <div class="text-xs text-gray-400 leading-relaxed mb-4 max-w-2xl mx-auto">
+        Track team productivity, monitor code metrics, and manage GitHub repositories.
+        Perfect for tech managers who need visibility into their team's development activities.
+    </div>
+    <div class="mt-4">
+        <a class="bg-green-400 text-black border-2 border-green-400 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-black hover:text-green-400 hover:shadow-lg transition-all duration-300" href="/login">
+            <span class="text-green-400 font-bold">></span> Start Tracking
+        </a>
     </div>
 </div>
 
-<div class="row mt-2">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">Background Workers</div>
-            <p>Asynchronous task processing with background worker system.</p>
+<!-- Features Section -->
+<div class="mb-6">
+    <div class="text-sm text-green-400 font-bold border-b border-green-400 pb-1 mb-3">
+        <span class="text-green-400 font-bold">#</span> Core Features
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+        <div class="bg-gray-900 border border-gray-600 p-3 mb-2 hover:border-green-400 transition-colors">
+            <div class="text-base mb-2">👥</div>
+            <div class="text-xs text-green-400 font-bold mb-2">Team Performance Tracking</div>
+            <div class="text-xs text-gray-400 leading-tight">
+                Monitor your team's GitHub activity, commit patterns, and repository contributions.
+                Get insights into individual and team productivity metrics.
+            </div>
+        </div>
+        <div class="bg-gray-900 border border-gray-600 p-3 mb-2 hover:border-green-400 transition-colors">
+            <div class="text-base mb-2">📊</div>
+            <div class="text-xs text-green-400 font-bold mb-2">Code Quality Analytics</div>
+            <div class="text-xs text-gray-400 leading-tight">
+                Automated analysis of code metrics, repository health, and development trends.
+                Configurable scoring to match your team's standards.
+            </div>
+        </div>
+        <div class="bg-gray-900 border border-gray-600 p-3 mb-2 hover:border-green-400 transition-colors">
+            <div class="text-base mb-2">🎯</div>
+            <div class="text-xs text-green-400 font-bold mb-2">Project Organization</div>
+            <div class="text-xs text-gray-400 leading-tight">
+                Group repositories by teams, projects, or initiatives. Track what matters most
+                and maintain clear oversight of multiple development streams.
+            </div>
+        </div>
+        <div class="bg-gray-900 border border-gray-600 p-3 mb-2 hover:border-green-400 transition-colors">
+            <div class="text-base mb-2">⚡</div>
+            <div class="text-xs text-green-400 font-bold mb-2">Real-time Monitoring</div>
+            <div class="text-xs text-gray-400 leading-tight">
+                Automated background processing keeps your data fresh. Monitor repository changes,
+                pull requests, and team activities without manual intervention.
+            </div>
         </div>
     </div>
+</div>
+
+<!-- Benefits Section -->
+<div class="mb-6">
+    <div class="text-sm text-green-400 font-bold border-b border-green-400 pb-1 mb-3">
+        <span class="text-green-400 font-bold">#</span> For Tech Managers
+    </div>
+    
+    <div class="space-y-2 mt-3">
+        <div class="bg-gray-900 border border-gray-600 p-3 hover:border-green-400 transition-colors">
+            <div class="text-xs text-green-400 font-bold mb-2">📈 Performance Insights</div>
+            <div class="text-xs text-gray-400 leading-tight">
+                Track individual developer contributions, identify bottlenecks, and recognize top performers.
+                Make data-driven decisions about team capacity and project timelines.
+            </div>
+        </div>
+        <div class="bg-gray-900 border border-gray-600 p-3 hover:border-green-400 transition-colors">
+            <div class="text-xs text-green-400 font-bold mb-2">🔍 Repository Oversight</div>
+            <div class="text-xs text-gray-400 leading-tight">
+                Centralized view of all team repositories, code quality metrics, and development activity.
+                Ensure coding standards and identify areas needing attention or resources.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CTA Section -->
+<div class="bg-gray-900 border border-green-400 p-5 text-center mt-6">
+    <div class="text-sm text-green-400 font-bold mb-2">Ready to track your team's performance?</div>
+    <div class="text-xs text-gray-400 mb-3">Connect your GitHub organization and start monitoring development metrics today.</div>
+    <a class="bg-green-400 text-black border-2 border-green-400 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-black hover:text-green-400 hover:shadow-lg transition-all duration-300" href="/login">
+        <span class="text-green-400 font-bold">></span> Get Started Now
+    </a>
 </div>
 
 {{template "footer" .}} 

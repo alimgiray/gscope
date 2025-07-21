@@ -9,25 +9,28 @@ import (
 	"sync"
 
 	"github.com/alimgiray/gscope/internal/repositories"
+	"github.com/alimgiray/gscope/internal/services"
 )
 
 // WorkerManager manages multiple workers of different types
 type WorkerManager struct {
-	workers []Worker
-	jobRepo *repositories.JobRepository
-	wg      sync.WaitGroup
-	ctx     context.Context
-	cancel  context.CancelFunc
+	workers      []Worker
+	jobRepo      *repositories.JobRepository
+	cloneService *services.CloneService
+	wg           sync.WaitGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 // NewWorkerManager creates a new worker manager
-func NewWorkerManager(jobRepo *repositories.JobRepository) *WorkerManager {
+func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *services.CloneService) *WorkerManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerManager{
-		workers: make([]Worker, 0),
-		jobRepo: jobRepo,
-		ctx:     ctx,
-		cancel:  cancel,
+		workers:      make([]Worker, 0),
+		jobRepo:      jobRepo,
+		cloneService: cloneService,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
@@ -44,7 +47,7 @@ func (wm *WorkerManager) StartAll() error {
 
 	// Create and start clone workers
 	for i := 0; i < cloneWorkers; i++ {
-		worker := NewCloneWorker(fmt.Sprintf("clone-%d", i+1), wm.jobRepo)
+		worker := NewCloneWorker(fmt.Sprintf("clone-%d", i+1), wm.jobRepo, wm.cloneService)
 		wm.workers = append(wm.workers, worker)
 		wm.startWorker(worker)
 	}
