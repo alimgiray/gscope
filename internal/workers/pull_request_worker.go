@@ -70,7 +70,7 @@ func (w *PullRequestWorker) processPullRequestJob(ctx context.Context, job *mode
 
 	// TODO: Implement actual pull request analysis logic here
 	// For now, just simulate work
-	time.Sleep(4 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Mark job as completed
 	job.MarkCompleted()

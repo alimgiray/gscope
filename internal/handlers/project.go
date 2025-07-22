@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -214,16 +215,34 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 
 		// Get the latest clone job for this repository
 		var latestJob *models.Job
-		jobs, err := h.jobService.GetJobsByProjectRepository(projectRepo.ID)
-		if err == nil && len(jobs) > 0 {
-			// Get the most recent job (jobs are ordered by created_at DESC)
-			latestJob = jobs[0]
+		cloneJobs, err := h.jobService.GetJobsByProjectRepository(projectRepo.ID)
+		if err == nil && len(cloneJobs) > 0 {
+			// Find the most recent clone job
+			for _, job := range cloneJobs {
+				if job.JobType == models.JobTypeClone {
+					latestJob = job
+					break
+				}
+			}
+		}
+
+		// Get the latest analyze job (commit, pull_request, or stats) for this repository
+		var latestAnalyzeJob *models.Job
+		if err == nil && len(cloneJobs) > 0 {
+			// Find the most recent analyze job
+			for _, job := range cloneJobs {
+				if job.JobType == models.JobTypeCommit || job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
+					latestAnalyzeJob = job
+					break
+				}
+			}
 		}
 
 		repositories = append(repositories, map[string]interface{}{
-			"ProjectRepo": projectRepo,
-			"GitHubRepo":  githubRepo,
-			"LatestJob":   latestJob,
+			"ProjectRepo":      projectRepo,
+			"GitHubRepo":       githubRepo,
+			"LatestJob":        latestJob,
+			"LatestAnalyzeJob": latestAnalyzeJob,
 		})
 	}
 
@@ -786,5 +805,154 @@ func (h *ProjectHandler) CreateCloneJob(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Clone job created successfully",
+	})
+}
+
+// CreateAnalyzeJobs creates analysis jobs for a specific repository
+func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	projectRepositoryID := c.Param("repository_id")
+
+	// Validate project ID
+	if _, err := uuid.Parse(projectID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid project ID",
+		})
+		return
+	}
+
+	// Validate project repository ID
+	if _, err := uuid.Parse(projectRepositoryID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid project repository ID",
+		})
+		return
+	}
+
+	// Check if user owns the project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	if project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Create the analyze jobs
+	err = h.jobService.CreateAnalyzeJobs(projectID, projectRepositoryID)
+	if err != nil {
+		// Check if it's a duplicate job error
+		if strings.Contains(err.Error(), "already in progress or pending") {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to create analysis jobs: " + err.Error(),
+			})
+		}
+		return
+	}
+
+	// Return success response
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Analysis jobs created successfully",
+	})
+}
+
+// CloneAllRepositories creates clone jobs for all tracked repositories in a project
+func (h *ProjectHandler) CloneAllRepositories(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Validate project ID
+	if _, err := uuid.Parse(projectID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid project ID",
+		})
+		return
+	}
+
+	// Check if user owns the project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	if project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Create clone jobs for all tracked repositories
+	createdCount, err := h.jobService.CreateCloneJobsForAllTrackedRepositories(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create clone jobs: " + err.Error(),
+		})
+		return
+	}
+
+	// Return success response
+	message := fmt.Sprintf("Created %d clone jobs for tracked repositories", createdCount)
+	if createdCount == 0 {
+		message = "No clone jobs created (no tracked repositories or all already have active jobs)"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": message,
 	})
 }

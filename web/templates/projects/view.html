@@ -22,7 +22,7 @@
         <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
             <button type="submit" class="btn" style="background: #059669; color: white;">Fetch Repositories</button>
         </form>
-        <button class="btn" style="background: #7c3aed; color: white;" onclick="cloneAllRepositories()">
+        <button class="btn" style="background: #7c3aed; color: white;" onclick="cloneAllRepositories('{{.Project.ID}}')">
             Clone All
         </button>
     </div>
@@ -44,11 +44,11 @@
                             {{else}}
                                 <span class="text-xs bg-gray-600 text-white px-1 rounded">Untracked</span>
                             {{end}}
-                            {{if .ProjectRepo.IsAnalyzed}}
-                                <span class="text-xs bg-blue-600 text-white px-1 rounded">Analyzed</span>
-                            {{end}}
                             {{if .GitHubRepo.IsCloned}}
                                 <span class="text-xs bg-purple-600 text-white px-1 rounded">Cloned</span>
+                            {{end}}
+                            {{if .ProjectRepo.IsAnalyzed}}
+                                <span class="text-xs bg-orange-600 text-white px-1 rounded">Analyzed</span>
                             {{end}}
                         </div>
                         {{if .GitHubRepo.Description}}
@@ -57,6 +57,13 @@
                         {{if .GitHubRepo.IsCloned}}
                             <p class="text-xs text-gray-400 mt-1">Last cloned: {{.GitHubRepo.LastCloned.Format "2006-01-02 15:04:05"}}</p>
                         {{end}}
+                        <p class="text-xs text-gray-400 mt-1">
+                            {{if .ProjectRepo.LastAnalyzed}}
+                                Last analyzed: {{.ProjectRepo.LastAnalyzed.Format "2006-01-02 15:04:05"}}
+                            {{else}}
+                                Last analyzed: never analyzed
+                            {{end}}
+                        </p>
                         <div class="flex gap-4 text-xs text-gray-400 mt-1">
                             <span>⭐ {{.GitHubRepo.Stars}}</span>
                             <span>🍴 {{.GitHubRepo.Forks}}</span>
@@ -92,6 +99,28 @@
                             {{else}}
                                 <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-purple-400 hover:text-purple-300">
                                     {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
+                                </button>
+                            {{end}}
+                        {{end}}
+                        
+                        {{if .ProjectRepo.IsTracked}}
+                            {{if .LatestAnalyzeJob}}
+                                {{if or .LatestAnalyzeJob.IsPending .LatestAnalyzeJob.IsInProgress}}
+                                    <button disabled class="text-xs text-yellow-400 cursor-not-allowed">
+                                        Analyzing...
+                                    </button>
+                                {{else if .LatestAnalyzeJob.IsFailed}}
+                                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestAnalyzeJob.ErrorMessage}}">
+                                        Retry Analyze
+                                    </button>
+                                {{else}}
+                                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
+                                        Analyze
+                                    </button>
+                                {{end}}
+                            {{else}}
+                                <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
+                                    Analyze
                                 </button>
                             {{end}}
                         {{end}}
@@ -278,6 +307,35 @@ function toggleTracking(projectId, repositoryId, currentStatus) {
     });
 }
 
+function analyzeRepository(projectId, repositoryId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    fetch(`/projects/${projectId}/repositories/${repositoryId}/analyze`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Analysis jobs created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to create analysis jobs', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to create analysis jobs', 'error');
+    });
+}
+
 // Legacy function for copying clone URLs (kept for compatibility)
 function copyCloneUrl(cloneUrl, repoName) {
     // Copy clone URL to clipboard
@@ -295,45 +353,32 @@ function copyCloneUrl(cloneUrl, repoName) {
     });
 }
 
-function cloneAllRepositories() {
-    const repositories = document.querySelectorAll('[data-clone-url]');
-    if (repositories.length === 0) {
-        alert('No repositories found to clone.');
-        return;
-    }
+function cloneAllRepositories(projectId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
     
-    let cloneUrls = [];
-    let trackedCount = 0;
-    repositories.forEach(function(repo) {
-        // Check if this repository is tracked (has a clone button)
-        const cloneButton = repo.querySelector('button[onclick*="cloneRepository"]');
-        if (cloneButton) {
-            const cloneUrl = repo.getAttribute('data-clone-url');
-            const repoName = repo.getAttribute('data-repo-name');
-            cloneUrls.push(repoName + ': ' + cloneUrl);
-            trackedCount++;
+    fetch(`/projects/${projectId}/clone-all`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Clone jobs created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to create clone jobs', 'error');
         }
-    });
-    
-    if (trackedCount === 0) {
-        alert('No tracked repositories found to clone. Please track some repositories first.');
-        return;
-    }
-    
-    const allUrls = cloneUrls.join('\n\n');
-    
-    // Copy all clone URLs to clipboard
-    navigator.clipboard.writeText(allUrls).then(function() {
-        alert('All tracked repository clone URLs copied to clipboard!\n\nTotal tracked repositories: ' + trackedCount);
-    }).catch(function(err) {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = allUrls;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        alert('All tracked repository clone URLs copied to clipboard!\n\nTotal tracked repositories: ' + trackedCount);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to create clone jobs', 'error');
     });
 }
 </script>

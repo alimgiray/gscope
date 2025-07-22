@@ -48,11 +48,11 @@ func main() {
 
 	// Job and worker services
 	jobRepo := repositories.NewJobRepository(database.DB)
-	jobService := services.NewJobService(jobRepo)
+	jobService := services.NewJobService(jobRepo, projectRepoRepo)
 	cloneService := services.NewCloneService(projectRepo, userRepo, githubRepoRepo, projectRepoRepo)
 
 	// Initialize worker manager
-	workerManager := workers.NewWorkerManager(jobRepo, cloneService)
+	workerManager := workers.NewWorkerManager(jobRepo, cloneService, projectRepoRepo)
 
 	// Initialize router
 	router := gin.Default()
@@ -128,6 +128,8 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.GET("/:id", projectHandler.ViewProject)
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
 		projects.POST("/:id/repositories/:repository_id/clone", projectHandler.CreateCloneJob)
+		projects.POST("/:id/repositories/:repository_id/analyze", projectHandler.CreateAnalyzeJobs)
+		projects.POST("/:id/clone-all", projectHandler.CloneAllRepositories)
 		projects.POST("/:id/repositories/:repository_id/toggle-track", projectHandler.ToggleRepositoryTracking)
 		projects.GET("/:id/settings", projectHandler.ProjectSettings)
 		projects.POST("/:id/settings/name", projectHandler.UpdateProjectName)

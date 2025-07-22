@@ -12,14 +12,16 @@ import (
 // StatsWorker handles stats jobs
 type StatsWorker struct {
 	*BaseWorker
-	jobRepo *repositories.JobRepository
+	jobRepo               *repositories.JobRepository
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository
 }
 
 // NewStatsWorker creates a new stats worker
-func NewStatsWorker(workerID string, jobRepo *repositories.JobRepository) *StatsWorker {
+func NewStatsWorker(workerID string, jobRepo *repositories.JobRepository, projectRepositoryRepo *repositories.ProjectRepositoryRepository) *StatsWorker {
 	return &StatsWorker{
-		BaseWorker: NewBaseWorker(workerID, models.JobTypeStats),
-		jobRepo:    jobRepo,
+		BaseWorker:            NewBaseWorker(workerID, models.JobTypeStats),
+		jobRepo:               jobRepo,
+		projectRepositoryRepo: projectRepositoryRepo,
 	}
 }
 
@@ -70,13 +72,21 @@ func (w *StatsWorker) processStatsJob(ctx context.Context, job *models.Job) {
 
 	// TODO: Implement actual stats generation logic here
 	// For now, just simulate work
-	time.Sleep(5 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Mark job as completed
 	job.MarkCompleted()
 	if err := w.jobRepo.Update(job); err != nil {
 		log.Printf("Stats worker %s error completing job %s: %v", w.WorkerID, job.ID, err)
 		return
+	}
+
+	// Update the last_analyzed field in project_repositories
+	if job.ProjectRepositoryID != nil {
+		now := time.Now()
+		if err := w.projectRepositoryRepo.UpdateLastAnalyzed(*job.ProjectRepositoryID, &now); err != nil {
+			log.Printf("Stats worker %s error updating last_analyzed for project repository %s: %v", w.WorkerID, *job.ProjectRepositoryID, err)
+		}
 	}
 
 	log.Printf("Stats worker %s completed job %s", w.WorkerID, job.ID)

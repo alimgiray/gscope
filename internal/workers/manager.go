@@ -14,23 +14,25 @@ import (
 
 // WorkerManager manages multiple workers of different types
 type WorkerManager struct {
-	workers      []Worker
-	jobRepo      *repositories.JobRepository
-	cloneService *services.CloneService
-	wg           sync.WaitGroup
-	ctx          context.Context
-	cancel       context.CancelFunc
+	workers               []Worker
+	jobRepo               *repositories.JobRepository
+	cloneService          *services.CloneService
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository
+	wg                    sync.WaitGroup
+	ctx                   context.Context
+	cancel                context.CancelFunc
 }
 
 // NewWorkerManager creates a new worker manager
-func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *services.CloneService) *WorkerManager {
+func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *services.CloneService, projectRepositoryRepo *repositories.ProjectRepositoryRepository) *WorkerManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerManager{
-		workers:      make([]Worker, 0),
-		jobRepo:      jobRepo,
-		cloneService: cloneService,
-		ctx:          ctx,
-		cancel:       cancel,
+		workers:               make([]Worker, 0),
+		jobRepo:               jobRepo,
+		cloneService:          cloneService,
+		projectRepositoryRepo: projectRepositoryRepo,
+		ctx:                   ctx,
+		cancel:                cancel,
 	}
 }
 
@@ -68,7 +70,7 @@ func (wm *WorkerManager) StartAll() error {
 
 	// Create and start stats workers
 	for i := 0; i < statsWorkers; i++ {
-		worker := NewStatsWorker(fmt.Sprintf("stats-%d", i+1), wm.jobRepo)
+		worker := NewStatsWorker(fmt.Sprintf("stats-%d", i+1), wm.jobRepo, wm.projectRepositoryRepo)
 		wm.workers = append(wm.workers, worker)
 		wm.startWorker(worker)
 	}

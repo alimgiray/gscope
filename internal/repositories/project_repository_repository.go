@@ -85,6 +85,18 @@ func (r *ProjectRepositoryRepository) GetByProjectID(projectID string) ([]*model
 	return projectRepos, nil
 }
 
+// UpdateLastAnalyzed updates the last_analyzed field for a project repository
+func (r *ProjectRepositoryRepository) UpdateLastAnalyzed(id string, lastAnalyzed *time.Time) error {
+	query := `
+		UPDATE project_repositories 
+		SET last_analyzed = ?, is_analyzed = TRUE, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND deleted_at IS NULL
+	`
+
+	_, err := r.db.Exec(query, lastAnalyzed, id)
+	return err
+}
+
 // GetByGithubRepoID retrieves all projects that use a specific GitHub repository
 func (r *ProjectRepositoryRepository) GetByGithubRepoID(githubRepoID string) ([]*models.ProjectRepository, error) {
 	query := `
