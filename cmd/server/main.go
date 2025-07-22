@@ -48,11 +48,14 @@ func main() {
 
 	// Job and worker services
 	jobRepo := repositories.NewJobRepository(database.DB)
+	commitRepo := repositories.NewCommitRepository(database.DB)
+	commitFileRepo := repositories.NewCommitFileRepository(database.DB)
+	personRepo := repositories.NewPersonRepository(database.DB)
 	jobService := services.NewJobService(jobRepo, projectRepoRepo)
 	cloneService := services.NewCloneService(projectRepo, userRepo, githubRepoRepo, projectRepoRepo)
 
 	// Initialize worker manager
-	workerManager := workers.NewWorkerManager(jobRepo, cloneService, projectRepoRepo)
+	workerManager := workers.NewWorkerManager(jobRepo, cloneService, projectRepoRepo, commitRepo, commitFileRepo, personRepo, githubRepoRepo)
 
 	// Initialize router
 	router := gin.Default()

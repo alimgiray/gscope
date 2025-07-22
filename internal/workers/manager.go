@@ -18,19 +18,27 @@ type WorkerManager struct {
 	jobRepo               *repositories.JobRepository
 	cloneService          *services.CloneService
 	projectRepositoryRepo *repositories.ProjectRepositoryRepository
+	commitRepo            *repositories.CommitRepository
+	commitFileRepo        *repositories.CommitFileRepository
+	personRepo            *repositories.PersonRepository
+	githubRepoRepo        *repositories.GitHubRepositoryRepository
 	wg                    sync.WaitGroup
 	ctx                   context.Context
 	cancel                context.CancelFunc
 }
 
 // NewWorkerManager creates a new worker manager
-func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *services.CloneService, projectRepositoryRepo *repositories.ProjectRepositoryRepository) *WorkerManager {
+func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *services.CloneService, projectRepositoryRepo *repositories.ProjectRepositoryRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, personRepo *repositories.PersonRepository, githubRepoRepo *repositories.GitHubRepositoryRepository) *WorkerManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerManager{
 		workers:               make([]Worker, 0),
 		jobRepo:               jobRepo,
 		cloneService:          cloneService,
 		projectRepositoryRepo: projectRepositoryRepo,
+		commitRepo:            commitRepo,
+		commitFileRepo:        commitFileRepo,
+		personRepo:            personRepo,
+		githubRepoRepo:        githubRepoRepo,
 		ctx:                   ctx,
 		cancel:                cancel,
 	}
@@ -56,7 +64,7 @@ func (wm *WorkerManager) StartAll() error {
 
 	// Create and start commit workers
 	for i := 0; i < commitWorkers; i++ {
-		worker := NewCommitWorker(fmt.Sprintf("commit-%d", i+1), wm.jobRepo)
+		worker := NewCommitWorker(fmt.Sprintf("commit-%d", i+1), wm.jobRepo, wm.commitRepo, wm.commitFileRepo, wm.personRepo, wm.projectRepositoryRepo, wm.githubRepoRepo)
 		wm.workers = append(wm.workers, worker)
 		wm.startWorker(worker)
 	}
