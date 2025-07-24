@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_type TEXT NOT NULL CHECK (job_type IN ('clone', 'commit', 'pull_request', 'stats')),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in-progress', 'completed', 'failed')),
     error_message TEXT,
+    depends_on TEXT,
     started_at DATETIME,
     completed_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -20,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_job_type ON jobs(job_type);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_depends_on ON jobs(depends_on); 
 
 -- Create trigger to update updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_jobs_updated_at

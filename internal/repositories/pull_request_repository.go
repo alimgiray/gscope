@@ -1,0 +1,142 @@
+package repositories
+
+import (
+	"database/sql"
+
+	"github.com/alimgiray/gscope/internal/models"
+	"github.com/google/uuid"
+)
+
+type PullRequestRepository struct {
+	db *sql.DB
+}
+
+func NewPullRequestRepository(db *sql.DB) *PullRequestRepository {
+	return &PullRequestRepository{db: db}
+}
+
+func (r *PullRequestRepository) Create(pr *models.PullRequest) error {
+	pr.ID = uuid.New().String()
+
+	query := `
+		INSERT INTO pull_requests (
+			id, repository_id, github_pr_number, github_pr_id, title, body, 
+			state, merged_at, merge_commit_sha, closed_at, user, 
+			requested_reviewers, requested_teams, draft, github_created_at, 
+			github_updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := r.db.Exec(query,
+		pr.ID, pr.RepositoryID, pr.GithubPRNumber, pr.GithubPRID, pr.Title, pr.Body,
+		pr.State, pr.MergedAt, pr.MergeCommitSHA, pr.ClosedAt, pr.User,
+		pr.RequestedReviewers, pr.RequestedTeams, pr.Draft, pr.GithubCreatedAt,
+		pr.GithubUpdatedAt,
+	)
+
+	return err
+}
+
+func (r *PullRequestRepository) GetByID(id string) (*models.PullRequest, error) {
+	query := `SELECT * FROM pull_requests WHERE id = ?`
+
+	var pr models.PullRequest
+	err := r.db.QueryRow(query, id).Scan(
+		&pr.ID, &pr.RepositoryID, &pr.GithubPRNumber, &pr.GithubPRID, &pr.Title, &pr.Body,
+		&pr.State, &pr.MergedAt, &pr.MergeCommitSHA, &pr.ClosedAt, &pr.User,
+		&pr.RequestedReviewers, &pr.RequestedTeams, &pr.Draft, &pr.GithubCreatedAt,
+		&pr.GithubUpdatedAt, &pr.CreatedAt, &pr.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &pr, nil
+}
+
+func (r *PullRequestRepository) GetByRepositoryID(repositoryID string) ([]*models.PullRequest, error) {
+	query := `SELECT * FROM pull_requests WHERE repository_id = ? ORDER BY github_pr_number DESC`
+
+	rows, err := r.db.Query(query, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pullRequests []*models.PullRequest
+	for rows.Next() {
+		var pr models.PullRequest
+		err := rows.Scan(
+			&pr.ID, &pr.RepositoryID, &pr.GithubPRNumber, &pr.GithubPRID, &pr.Title, &pr.Body,
+			&pr.State, &pr.MergedAt, &pr.MergeCommitSHA, &pr.ClosedAt, &pr.User,
+			&pr.RequestedReviewers, &pr.RequestedTeams, &pr.Draft, &pr.GithubCreatedAt,
+			&pr.GithubUpdatedAt, &pr.CreatedAt, &pr.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		pullRequests = append(pullRequests, &pr)
+	}
+
+	return pullRequests, nil
+}
+
+func (r *PullRequestRepository) GetByGithubPRID(githubPRID int) (*models.PullRequest, error) {
+	query := `SELECT * FROM pull_requests WHERE github_pr_id = ?`
+
+	var pr models.PullRequest
+	err := r.db.QueryRow(query, githubPRID).Scan(
+		&pr.ID, &pr.RepositoryID, &pr.GithubPRNumber, &pr.GithubPRID, &pr.Title, &pr.Body,
+		&pr.State, &pr.MergedAt, &pr.MergeCommitSHA, &pr.ClosedAt, &pr.User,
+		&pr.RequestedReviewers, &pr.RequestedTeams, &pr.Draft, &pr.GithubCreatedAt,
+		&pr.GithubUpdatedAt, &pr.CreatedAt, &pr.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &pr, nil
+}
+
+func (r *PullRequestRepository) Update(pr *models.PullRequest) error {
+	query := `
+		UPDATE pull_requests SET 
+			repository_id = ?, github_pr_number = ?, github_pr_id = ?, title = ?, body = ?,
+			state = ?, merged_at = ?, merge_commit_sha = ?, closed_at = ?, user = ?,
+			requested_reviewers = ?, requested_teams = ?, draft = ?, github_created_at = ?,
+			github_updated_at = ?
+		WHERE id = ?
+	`
+
+	_, err := r.db.Exec(query,
+		pr.RepositoryID, pr.GithubPRNumber, pr.GithubPRID, pr.Title, pr.Body,
+		pr.State, pr.MergedAt, pr.MergeCommitSHA, pr.ClosedAt, pr.User,
+		pr.RequestedReviewers, pr.RequestedTeams, pr.Draft, pr.GithubCreatedAt,
+		pr.GithubUpdatedAt, pr.ID,
+	)
+
+	return err
+}
+
+func (r *PullRequestRepository) Delete(id string) error {
+	query := `DELETE FROM pull_requests WHERE id = ?`
+	_, err := r.db.Exec(query, id)
+	return err
+}
+
+func (r *PullRequestRepository) Upsert(pr *models.PullRequest) error {
+	existing, err := r.GetByGithubPRID(pr.GithubPRID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	if existing != nil {
+		pr.ID = existing.ID
+		pr.CreatedAt = existing.CreatedAt
+		return r.Update(pr)
+	}
+
+	return r.Create(pr)
+}

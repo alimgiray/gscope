@@ -10,6 +10,7 @@ import (
 
 	"github.com/alimgiray/gscope/internal/repositories"
 	"github.com/alimgiray/gscope/internal/services"
+	"github.com/google/go-github/v57/github"
 )
 
 // WorkerManager manages multiple workers of different types
@@ -22,13 +23,35 @@ type WorkerManager struct {
 	commitFileRepo        *repositories.CommitFileRepository
 	personRepo            *repositories.PersonRepository
 	githubRepoRepo        *repositories.GitHubRepositoryRepository
+	githubRepoService     *services.GitHubRepositoryService
+	pullRequestService    *services.PullRequestService
+	prReviewService       *services.PRReviewService
+	githubPersonService   *services.GithubPersonService
+	githubClient          *github.Client
+	projectRepo           *repositories.ProjectRepository
+	userRepo              *repositories.UserRepository
 	wg                    sync.WaitGroup
 	ctx                   context.Context
 	cancel                context.CancelFunc
 }
 
 // NewWorkerManager creates a new worker manager
-func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *services.CloneService, projectRepositoryRepo *repositories.ProjectRepositoryRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, personRepo *repositories.PersonRepository, githubRepoRepo *repositories.GitHubRepositoryRepository) *WorkerManager {
+func NewWorkerManager(
+	jobRepo *repositories.JobRepository,
+	cloneService *services.CloneService,
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
+	commitRepo *repositories.CommitRepository,
+	commitFileRepo *repositories.CommitFileRepository,
+	personRepo *repositories.PersonRepository,
+	githubRepoRepo *repositories.GitHubRepositoryRepository,
+	githubRepoService *services.GitHubRepositoryService,
+	pullRequestService *services.PullRequestService,
+	prReviewService *services.PRReviewService,
+	githubPersonService *services.GithubPersonService,
+	githubClient *github.Client,
+	projectRepo *repositories.ProjectRepository,
+	userRepo *repositories.UserRepository,
+) *WorkerManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerManager{
 		workers:               make([]Worker, 0),
@@ -39,6 +62,13 @@ func NewWorkerManager(jobRepo *repositories.JobRepository, cloneService *service
 		commitFileRepo:        commitFileRepo,
 		personRepo:            personRepo,
 		githubRepoRepo:        githubRepoRepo,
+		githubRepoService:     githubRepoService,
+		pullRequestService:    pullRequestService,
+		prReviewService:       prReviewService,
+		githubPersonService:   githubPersonService,
+		githubClient:          githubClient,
+		projectRepo:           projectRepo,
+		userRepo:              userRepo,
 		ctx:                   ctx,
 		cancel:                cancel,
 	}
@@ -71,7 +101,17 @@ func (wm *WorkerManager) StartAll() error {
 
 	// Create and start pull request workers
 	for i := 0; i < pullRequestWorkers; i++ {
-		worker := NewPullRequestWorker(fmt.Sprintf("pull-request-%d", i+1), wm.jobRepo)
+		worker := NewPullRequestWorker(
+			fmt.Sprintf("pull-request-%d", i+1),
+			wm.githubClient,
+			wm.jobRepo,
+			wm.pullRequestService,
+			wm.prReviewService,
+			wm.githubPersonService,
+			wm.githubRepoService,
+			wm.projectRepo,
+			wm.userRepo,
+		)
 		wm.workers = append(wm.workers, worker)
 		wm.startWorker(worker)
 	}

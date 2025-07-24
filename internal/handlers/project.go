@@ -8,6 +8,7 @@ import (
 
 	"github.com/alimgiray/gscope/internal/middleware"
 	"github.com/alimgiray/gscope/internal/models"
+	"github.com/alimgiray/gscope/internal/repositories"
 	"github.com/alimgiray/gscope/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -20,11 +21,14 @@ type ProjectHandler struct {
 	excludedExtensionService *services.ExcludedExtensionService
 	githubRepoService        *services.GitHubRepositoryService
 	jobService               *services.JobService
+	commitRepo               *repositories.CommitRepository
+	githubPersonRepo         *repositories.GithubPersonRepository
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
 	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
-	githubRepoService *services.GitHubRepositoryService, jobService *services.JobService) *ProjectHandler {
+	githubRepoService *services.GitHubRepositoryService, jobService *services.JobService,
+	commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:           projectService,
 		userService:              userService,
@@ -32,6 +36,8 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		excludedExtensionService: excludedExtensionService,
 		githubRepoService:        githubRepoService,
 		jobService:               jobService,
+		commitRepo:               commitRepo,
+		githubPersonRepo:         githubPersonRepo,
 	}
 }
 
@@ -213,36 +219,69 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			continue
 		}
 
-		// Get the latest clone job for this repository
-		var latestJob *models.Job
-		cloneJobs, err := h.jobService.GetJobsByProjectRepository(projectRepo.ID)
-		if err == nil && len(cloneJobs) > 0 {
-			// Find the most recent clone job
-			for _, job := range cloneJobs {
-				if job.JobType == models.JobTypeClone {
-					latestJob = job
+		// Get all jobs for this repository
+		allJobs, err := h.jobService.GetProjectRepositoryJobs(projectRepo.ID)
+		if err != nil {
+			allJobs = []*models.Job{}
+		}
+
+		// Calculate clone job status
+		hasActiveCloneJobs := false
+		latestCloneJobFailed := false
+		latestCloneJobError := ""
+
+		// Check for active clone or commit jobs (commit depends on clone)
+		for _, job := range allJobs {
+			if job.JobType == models.JobTypeClone || job.JobType == models.JobTypeCommit {
+				if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+					hasActiveCloneJobs = true
 					break
+				}
+				if job.JobType == models.JobTypeClone && job.Status == models.JobStatusFailed {
+					latestCloneJobFailed = true
+					if job.ErrorMessage != nil {
+						latestCloneJobError = *job.ErrorMessage
+					}
 				}
 			}
 		}
 
-		// Get the latest analyze job (commit, pull_request, or stats) for this repository
-		var latestAnalyzeJob *models.Job
-		if err == nil && len(cloneJobs) > 0 {
-			// Find the most recent analyze job
-			for _, job := range cloneJobs {
-				if job.JobType == models.JobTypeCommit || job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
-					latestAnalyzeJob = job
+		// Get project-level jobs for analyze status
+		projectJobs, err := h.jobService.GetProjectJobs(projectID)
+		if err != nil {
+			projectJobs = []*models.Job{}
+		}
+
+		// Calculate analyze job status (project-level jobs)
+		hasActiveAnalyzeJobs := false
+		latestAnalyzeJobFailed := false
+		latestAnalyzeJobError := ""
+
+		// Check for active pull_request or stats jobs (stats depends on pull_request)
+		for _, job := range projectJobs {
+			if job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
+				if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+					hasActiveAnalyzeJobs = true
 					break
+				}
+				if job.JobType == models.JobTypePullRequest && job.Status == models.JobStatusFailed {
+					latestAnalyzeJobFailed = true
+					if job.ErrorMessage != nil {
+						latestAnalyzeJobError = *job.ErrorMessage
+					}
 				}
 			}
 		}
 
 		repositories = append(repositories, map[string]interface{}{
-			"ProjectRepo":      projectRepo,
-			"GitHubRepo":       githubRepo,
-			"LatestJob":        latestJob,
-			"LatestAnalyzeJob": latestAnalyzeJob,
+			"ProjectRepo":            projectRepo,
+			"GitHubRepo":             githubRepo,
+			"HasActiveCloneJobs":     hasActiveCloneJobs,
+			"LatestCloneJobFailed":   latestCloneJobFailed,
+			"LatestCloneJobError":    latestCloneJobError,
+			"HasActiveAnalyzeJobs":   hasActiveAnalyzeJobs,
+			"LatestAnalyzeJobFailed": latestAnalyzeJobFailed,
+			"LatestAnalyzeJobError":  latestAnalyzeJobError,
 		})
 	}
 
@@ -783,32 +822,24 @@ func (h *ProjectHandler) CreateCloneJob(c *gin.Context) {
 		return
 	}
 
-	// Create the clone job
-	_, err = h.jobService.CreateCloneJob(projectID, projectRepositoryID)
+	// Create the clone and commit jobs
+	err = h.jobService.CreateCloneAndCommitJobs(projectID, projectRepositoryID)
 	if err != nil {
-		// Check if it's a duplicate job error
-		if strings.Contains(err.Error(), "already in progress or pending") {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "A clone job is already in progress for this repository",
-			})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "Failed to create clone job: " + err.Error(),
-			})
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create clone and commit jobs: " + err.Error(),
+		})
 		return
 	}
 
 	// Return success response
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Clone job created successfully",
+		"message": "Clone and commit jobs created successfully",
 	})
 }
 
-// CreateAnalyzeJobs creates analysis jobs for a specific repository
+// CreateAnalyzeJobs creates analysis jobs for a project
 func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 	session := middleware.GetSession(c)
 	if session == nil {
@@ -817,7 +848,7 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 	}
 
 	projectID := c.Param("id")
-	projectRepositoryID := c.Param("repository_id")
+	projectRepositoryID := c.Param("repository_id") // This might be empty for project-level calls
 
 	// Validate project ID
 	if _, err := uuid.Parse(projectID); err != nil {
@@ -828,13 +859,15 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 		return
 	}
 
-	// Validate project repository ID
-	if _, err := uuid.Parse(projectRepositoryID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid project repository ID",
-		})
-		return
+	// Validate project repository ID only if it's provided (for repository-level calls)
+	if projectRepositoryID != "" {
+		if _, err := uuid.Parse(projectRepositoryID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid project repository ID",
+			})
+			return
+		}
 	}
 
 	// Check if user owns the project
@@ -864,28 +897,20 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 		return
 	}
 
-	// Create the analyze jobs
-	err = h.jobService.CreateAnalyzeJobs(projectID, projectRepositoryID)
+	// Create the pull_request and stats jobs
+	err = h.jobService.CreatePullRequestAndStatsJobs(projectID)
 	if err != nil {
-		// Check if it's a duplicate job error
-		if strings.Contains(err.Error(), "already in progress or pending") {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "Failed to create analysis jobs: " + err.Error(),
-			})
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create pull request and stats jobs: " + err.Error(),
+		})
 		return
 	}
 
 	// Return success response
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Analysis jobs created successfully",
+		"message": "Pull request and stats jobs created successfully",
 	})
 }
 
@@ -935,24 +960,149 @@ func (h *ProjectHandler) CloneAllRepositories(c *gin.Context) {
 		return
 	}
 
-	// Create clone jobs for all tracked repositories
-	createdCount, err := h.jobService.CreateCloneJobsForAllTrackedRepositories(projectID)
+	// Get all project repositories for this project
+	projectRepos, err := h.githubRepoService.GetProjectRepositories(projectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "Failed to create clone jobs: " + err.Error(),
+			"message": "Failed to get project repositories: " + err.Error(),
 		})
 		return
 	}
 
+	createdCount := 0
+	for _, projectRepo := range projectRepos {
+		// Only create jobs for tracked repositories
+		if !projectRepo.IsTracked {
+			continue
+		}
+
+		// Create clone and commit jobs for this repository
+		if err := h.jobService.CreateCloneAndCommitJobs(projectID, projectRepo.ID); err != nil {
+			continue // Skip if we can't create the job
+		}
+
+		createdCount++
+	}
+
 	// Return success response
-	message := fmt.Sprintf("Created %d clone jobs for tracked repositories", createdCount)
+	message := fmt.Sprintf("Created %d clone and commit job pairs for tracked repositories", createdCount)
 	if createdCount == 0 {
-		message = "No clone jobs created (no tracked repositories or all already have active jobs)"
+		message = "No jobs created (no tracked repositories)"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": message,
 	})
+}
+
+// ViewProjectEmails displays the emails page for a project
+func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get email statistics
+	emails, err := h.commitRepo.GetEmailStatsByProjectID(projectID)
+	if err != nil {
+		emails = []*models.EmailStats{}
+	}
+
+	data := gin.H{
+		"Title":   "Emails - " + project.Name,
+		"User":    session,
+		"Project": project,
+		"Emails":  emails,
+	}
+
+	c.HTML(http.StatusOK, "project_emails", data)
+}
+
+// ViewProjectPeople displays the people page for a project
+func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get GitHub people
+	people, err := h.githubPersonRepo.GetByProjectID(projectID)
+	if err != nil {
+		people = []*models.GithubPerson{}
+	}
+
+	data := gin.H{
+		"Title":   "People - " + project.Name,
+		"User":    session,
+		"Project": project,
+		"People":  people,
+	}
+
+	c.HTML(http.StatusOK, "project_people", data)
 }

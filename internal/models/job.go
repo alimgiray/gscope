@@ -34,6 +34,7 @@ type Job struct {
 	JobType             JobType    `json:"job_type"`
 	Status              JobStatus  `json:"status"`
 	ErrorMessage        *string    `json:"error_message"`
+	DependsOn           *string    `json:"depends_on"`
 	StartedAt           *time.Time `json:"started_at"`
 	CompletedAt         *time.Time `json:"completed_at"`
 	CreatedAt           time.Time  `json:"created_at"`

@@ -142,20 +142,8 @@ func (w *CommitWorker) analyzeRepositoryCommits(githubRepo *models.GitHubReposit
 		return fmt.Errorf("failed to get git log: %w", err)
 	}
 
-	// Debug: log the first few lines to see the format
 	lines := strings.Split(string(output), "\n")
-	if len(lines) > 0 {
-		log.Printf("Debug: First few lines of git log output:")
-		maxLines := 5
-		if len(lines) < maxLines {
-			maxLines = len(lines)
-		}
-		for i := 0; i < maxLines; i++ {
-			if lines[i] != "" {
-				log.Printf("  Line %d: %s", i+1, lines[i])
-			}
-		}
-	}
+
 	var currentCommit *models.Commit
 	var currentCommitSHA string
 
@@ -223,12 +211,6 @@ func (w *CommitWorker) analyzeRepositoryCommits(githubRepo *models.GitHubReposit
 					currentCommit = nil
 					continue
 				}
-
-				log.Printf("Created commit: %s - %s by %s (%s)", currentCommitSHA[:8], message, authorName, authorEmail)
-
-				// Debug: log the parsed parts for troubleshooting
-				log.Printf("Debug: Parsed commit - SHA: %s, Name: '%s', Email: '%s', Date: %s",
-					currentCommitSHA[:8], authorName, authorEmail, commitDate.Format("2006-01-02 15:04:05"))
 			}
 		} else if currentCommit != nil {
 			// This is a file change line (numstat format: additions deletions filename)
@@ -267,18 +249,12 @@ func (w *CommitWorker) analyzeRepositoryCommits(githubRepo *models.GitHubReposit
 				currentCommit.Additions += additions
 				currentCommit.Deletions += deletions
 				currentCommit.Changes += additions + deletions
-
-				// Debug: log file statistics
-				log.Printf("Debug: File %s - Additions: %d, Deletions: %d, Changes: %d, Status: %s",
-					filename, additions, deletions, additions+deletions, status)
 			}
 		}
 	}
 
 	// Update stats for the last commit
 	if currentCommit != nil {
-		log.Printf("Debug: Final stats for commit %s - Additions: %d, Deletions: %d, Changes: %d",
-			currentCommitSHA[:8], currentCommit.Additions, currentCommit.Deletions, currentCommit.Changes)
 		if err := w.commitRepo.Update(currentCommit); err != nil {
 			log.Printf("Warning: failed to update commit stats for %s: %v", currentCommitSHA, err)
 		}

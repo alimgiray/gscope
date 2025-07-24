@@ -16,6 +16,7 @@ import (
 	"github.com/alimgiray/gscope/pkg/config"
 	"github.com/alimgiray/gscope/pkg/database"
 	"github.com/gin-gonic/gin"
+	"github.com/google/go-github/v57/github"
 )
 
 func main() {
@@ -51,11 +52,26 @@ func main() {
 	commitRepo := repositories.NewCommitRepository(database.DB)
 	commitFileRepo := repositories.NewCommitFileRepository(database.DB)
 	personRepo := repositories.NewPersonRepository(database.DB)
-	jobService := services.NewJobService(jobRepo, projectRepoRepo)
+	jobService := services.NewJobService(jobRepo)
 	cloneService := services.NewCloneService(projectRepo, userRepo, githubRepoRepo, projectRepoRepo)
 
+	// Pull request related services
+	pullRequestRepo := repositories.NewPullRequestRepository(database.DB)
+	pullRequestService := services.NewPullRequestService(pullRequestRepo)
+	prReviewRepo := repositories.NewPRReviewRepository(database.DB)
+	prReviewService := services.NewPRReviewService(prReviewRepo)
+	githubPersonRepo := repositories.NewGithubPersonRepository(database.DB)
+	githubPersonService := services.NewGithubPersonService(githubPersonRepo)
+
+	// Initialize GitHub client
+	githubClient := github.NewClient(nil)
+
 	// Initialize worker manager
-	workerManager := workers.NewWorkerManager(jobRepo, cloneService, projectRepoRepo, commitRepo, commitFileRepo, personRepo, githubRepoRepo)
+	workerManager := workers.NewWorkerManager(
+		jobRepo, cloneService, projectRepoRepo, commitRepo, commitFileRepo, personRepo, githubRepoRepo,
+		githubRepoService, pullRequestService, prReviewService, githubPersonService, githubClient,
+		projectRepo, userRepo,
+	)
 
 	// Initialize router
 	router := gin.Default()
@@ -67,7 +83,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo)
 	loadTemplates(router)
 
 	// Start workers
@@ -99,12 +115,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -129,7 +145,10 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.GET("/create", projectHandler.CreateProjectForm)
 		projects.POST("/create", projectHandler.CreateProject)
 		projects.GET("/:id", projectHandler.ViewProject)
+		projects.GET("/:id/emails", projectHandler.ViewProjectEmails)
+		projects.GET("/:id/people", projectHandler.ViewProjectPeople)
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
+		projects.POST("/:id/analyze", projectHandler.CreateAnalyzeJobs)
 		projects.POST("/:id/repositories/:repository_id/clone", projectHandler.CreateCloneJob)
 		projects.POST("/:id/repositories/:repository_id/analyze", projectHandler.CreateAnalyzeJobs)
 		projects.POST("/:id/clone-all", projectHandler.CloneAllRepositories)
@@ -162,5 +181,7 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/projects/create.html"),
 		filepath.Join(cwd, "web/templates/projects/view.html"),
 		filepath.Join(cwd, "web/templates/projects/settings.html"),
+		filepath.Join(cwd, "web/templates/projects/emails.html"),
+		filepath.Join(cwd, "web/templates/projects/people.html"),
 	)
 }

@@ -1,0 +1,57 @@
+{{define "project_people"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="flex justify-between items-center">
+        <div class="card-header">People - {{.Project.Name}}</div>
+        <a href="/projects/{{.Project.ID}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
+    </div>
+    <div class="text-xs text-gray-400 mt-2">
+        All GitHub people found in this project
+    </div>
+</div>
+
+<!-- People Section -->
+<div class="card mt-4">
+    <div class="card-header">GitHub People</div>
+    <div class="card-body">
+        {{if .People}}
+            <div class="space-y-2">
+                {{range .People}}
+                <div class="flex justify-between items-center p-2 border border-gray-600 rounded">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            {{if .AvatarURL}}
+                                <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-6 h-6 rounded-full">
+                            {{end}}
+                            <span class="text-sm font-mono">{{.Username}}</span>
+                            {{if .DisplayName}}
+                                <span class="text-xs text-gray-400">({{.DisplayName}})</span>
+                            {{end}}
+                            {{if .Type}}
+                                <span class="text-xs bg-gray-600 text-white px-1 rounded">{{.Type}}</span>
+                            {{end}}
+                        </div>
+                        {{if .ProfileURL}}
+                            <div class="text-xs text-gray-400 mt-1">
+                                <a href="{{.ProfileURL}}" target="_blank" class="text-blue-400 hover:text-blue-300">View Profile</a>
+                            </div>
+                        {{end}}
+                        <div class="text-xs text-gray-400 mt-1">
+                            GitHub ID: {{.GithubUserID}}
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">
+                            Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        {{else}}
+            <p class="text-xs text-gray-400">No people found. Analyze pull requests to discover GitHub people.</p>
+        {{end}}
+    </div>
+</div>
+
+{{template "footer" .}}
+{{end}} 

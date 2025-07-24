@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
 )
@@ -106,6 +107,68 @@ func (r *CommitRepository) GetByRepositoryID(repositoryID string) ([]*models.Com
 	}
 
 	return commits, nil
+}
+
+// GetEmailStatsByProjectID retrieves email statistics for a project
+func (r *CommitRepository) GetEmailStatsByProjectID(projectID string) ([]*models.EmailStats, error) {
+
+	query := `
+		SELECT 
+			c.author_email,
+			c.author_name,
+			COUNT(*) as commit_count,
+			MIN(c.created_at) as first_commit,
+			MAX(c.created_at) as last_commit
+		FROM commits c
+		INNER JOIN github_repositories gr ON c.github_repository_id = gr.id
+		INNER JOIN project_repositories pr ON gr.id = pr.github_repo_id
+		WHERE pr.project_id = ?
+		GROUP BY c.author_email, c.author_name
+		ORDER BY commit_count DESC, c.author_email ASC
+	`
+
+	rows, err := r.db.Query(query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var emailStats []*models.EmailStats
+	for rows.Next() {
+		stats := &models.EmailStats{}
+		var authorName *string
+		var firstCommitStr, lastCommitStr *string
+
+		err := rows.Scan(
+			&stats.Email,
+			&authorName,
+			&stats.CommitCount,
+			&firstCommitStr,
+			&lastCommitStr,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		stats.Name = authorName
+
+		// Parse time strings to time.Time
+		if firstCommitStr != nil {
+			if t, err := time.Parse("2006-01-02 15:04:05", *firstCommitStr); err == nil {
+				stats.FirstCommit = &t
+			}
+		}
+
+		if lastCommitStr != nil {
+			if t, err := time.Parse("2006-01-02 15:04:05", *lastCommitStr); err == nil {
+				stats.LastCommit = &t
+			}
+		}
+
+		emailStats = append(emailStats, stats)
+	}
+
+	return emailStats, nil
 }
 
 // Update updates an existing commit
