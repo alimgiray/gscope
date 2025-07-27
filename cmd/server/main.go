@@ -64,6 +64,9 @@ func main() {
 	githubPersonService := services.NewGithubPersonService(githubPersonRepo)
 	emailMergeRepo := repositories.NewEmailMergeRepository(database.DB)
 	emailMergeService := services.NewEmailMergeService(emailMergeRepo)
+	githubPersonEmailRepo := repositories.NewGitHubPersonEmailRepository(database.DB)
+	githubPersonEmailService := services.NewGitHubPersonEmailService(githubPersonEmailRepo)
+	textSimilarityService := services.NewTextSimilarityService()
 
 	// Initialize GitHub client
 	githubClient := github.NewClient(nil)
@@ -85,7 +88,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, emailMergeService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService)
 	loadTemplates(router)
 
 	// Start workers
@@ -117,12 +120,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, emailMergeService *services.EmailMergeService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, emailMergeService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -151,6 +154,8 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/emails/merge", projectHandler.CreateEmailMerge)
 		projects.POST("/:id/emails/detach", projectHandler.DetachEmailMerge)
 		projects.GET("/:id/people", projectHandler.ViewProjectPeople)
+		projects.POST("/:id/people/associate", projectHandler.CreateGitHubPersonEmailAssociation)
+		projects.POST("/:id/people/detach", projectHandler.DeleteGitHubPersonEmailAssociation)
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
 		projects.POST("/:id/analyze", projectHandler.CreateAnalyzeJobs)
 		projects.POST("/:id/repositories/:repository_id/clone", projectHandler.CreateCloneJob)

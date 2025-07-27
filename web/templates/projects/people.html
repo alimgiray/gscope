@@ -7,7 +7,7 @@
         <a href="/projects/{{.Project.ID}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
     </div>
     <div class="text-xs text-gray-400 mt-2">
-        All GitHub people found in this project
+        All GitHub people found in this project. Associate emails to connect commits with pull requests.
     </div>
 </div>
 
@@ -43,7 +43,40 @@
                         <div class="text-xs text-gray-400 mt-1">
                             Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}
                         </div>
+                        
+                        <!-- Email Association Section -->
+                        {{$associatedEmail := index $.PersonEmailMap .ID}}
+                        {{if $associatedEmail}}
+                            <div class="text-xs text-green-400 mt-2">
+                                <span class="font-mono">Associated Email: {{$associatedEmail}}</span>
+                                <button onclick="detachEmail('{{$.Project.ID}}', '{{$associatedEmail}}')" class="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded ml-2">
+                                    Detach
+                                </button>
+                            </div>
+                        {{else}}
+                            <div class="text-xs text-gray-400 mt-2">
+                                <span>No email associated</span>
+                            </div>
+                        {{end}}
                     </div>
+                    
+                    <!-- Email Association Controls -->
+                    {{if not $associatedEmail}}
+                    <div class="flex items-center gap-2">
+                        <select class="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1" onchange="updateEmailTarget('{{.ID}}', this.value)">
+                            <option value="">Select email to associate...</option>
+                            {{$sortedEmails := index $.PersonSortedEmails .ID}}
+                            {{range $sortedEmails}}
+                                {{if not (index $.AssociatedEmails .)}}
+                                    <option value="{{.}}">{{.}}</option>
+                                {{end}}
+                            {{end}}
+                        </select>
+                        <button onclick="associateEmail('{{$.Project.ID}}', '{{.ID}}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded" disabled id="associate-btn-{{.ID}}">
+                            Associate
+                        </button>
+                    </div>
+                    {{end}}
                 </div>
                 {{end}}
             </div>
@@ -52,6 +85,75 @@
         {{end}}
     </div>
 </div>
+
+<script>
+let emailTargets = {};
+
+function updateEmailTarget(githubPersonId, email) {
+    emailTargets[githubPersonId] = email;
+    const associateBtn = document.getElementById('associate-btn-' + githubPersonId);
+    if (associateBtn) {
+        associateBtn.disabled = !email;
+    }
+}
+
+function associateEmail(projectId, githubPersonId) {
+    const email = emailTargets[githubPersonId];
+    if (!email) {
+        alert('Please select an email first');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('github_person_id', githubPersonId);
+    formData.append('email', email);
+
+    fetch(`/projects/${projectId}/people/associate`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page to show updated associations
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to associate email');
+    });
+}
+
+function detachEmail(projectId, email) {
+    if (!confirm(`Are you sure you want to detach ${email}?`)) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('email', email);
+
+    fetch(`/projects/${projectId}/people/detach`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page to show updated associations
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to detach email');
+    });
+}
+</script>
 
 {{template "footer" .}}
 {{end}} 

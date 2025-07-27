@@ -23,14 +23,18 @@ type ProjectHandler struct {
 	jobService               *services.JobService
 	commitRepo               *repositories.CommitRepository
 	githubPersonRepo         *repositories.GithubPersonRepository
+	personRepo               *repositories.PersonRepository
 	emailMergeService        *services.EmailMergeService
+	githubPersonEmailService *services.GitHubPersonEmailService
+	textSimilarityService    *services.TextSimilarityService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
 	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
 	githubRepoService *services.GitHubRepositoryService, jobService *services.JobService,
 	commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository,
-	emailMergeService *services.EmailMergeService) *ProjectHandler {
+	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
+	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:           projectService,
 		userService:              userService,
@@ -40,7 +44,10 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		jobService:               jobService,
 		commitRepo:               commitRepo,
 		githubPersonRepo:         githubPersonRepo,
+		personRepo:               personRepo,
 		emailMergeService:        emailMergeService,
+		githubPersonEmailService: githubPersonEmailService,
+		textSimilarityService:    textSimilarityService,
 	}
 }
 
@@ -1051,11 +1058,43 @@ func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
 		emails = []*models.EmailStats{}
 	}
 
+	// Create sorted emails for each row's dropdown
+	emailSortedEmails := make(map[string][]string)
+	for _, email := range emails {
+		// Extract all email addresses for this dropdown (excluding current email)
+		var emailAddresses []string
+		for _, e := range emails {
+			if e.Email != email.Email {
+				emailAddresses = append(emailAddresses, e.Email)
+			}
+		}
+
+		// Sort emails by similarity to current email (using email username part)
+		emailUsername := strings.Split(email.Email, "@")[0]
+		sortedEmails := h.textSimilarityService.SortEmailsBySimilarity(emailAddresses, emailUsername)
+
+		// Extract just the email addresses in sorted order
+		var sortedEmailAddresses []string
+		for _, emailSimilarity := range sortedEmails {
+			sortedEmailAddresses = append(sortedEmailAddresses, emailSimilarity.Email)
+		}
+
+		emailSortedEmails[email.Email] = sortedEmailAddresses
+	}
+
+	// Create a map of merged emails to exclude them from dropdowns
+	associatedEmails := make(map[string]bool)
+	for sourceEmail := range mergedEmails {
+		associatedEmails[sourceEmail] = true
+	}
+
 	data := gin.H{
-		"Title":   "Emails - " + project.Name,
-		"User":    session,
-		"Project": project,
-		"Emails":  emails,
+		"Title":             "Emails - " + project.Name,
+		"User":              session,
+		"Project":           project,
+		"Emails":            emails,
+		"EmailSortedEmails": emailSortedEmails,
+		"AssociatedEmails":  associatedEmails,
 	}
 
 	c.HTML(http.StatusOK, "project_emails", data)
@@ -1106,11 +1145,79 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 		people = []*models.GithubPerson{}
 	}
 
+	// Get email associations for this project
+	emailAssociations, err := h.githubPersonEmailService.GetGitHubPersonEmailsByProjectID(projectID)
+	if err != nil {
+		emailAssociations = []*models.GitHubPersonEmail{}
+	}
+
+	// Get merged emails for this project
+	mergedEmails, err := h.emailMergeService.GetMergedEmailsForProject(projectID)
+	if err != nil {
+		mergedEmails = make(map[string]string)
+	}
+
+	// Get all emails for dropdown (with merges applied)
+	emails, err := h.commitRepo.GetEmailStatsByProjectID(projectID, mergedEmails)
+	if err != nil {
+		emails = []*models.EmailStats{}
+	}
+
+	// Filter out merged emails from the dropdown options
+	var filteredEmails []*models.EmailStats
+	for _, email := range emails {
+		// Check if this email is a source email (merged into another)
+		if _, isMerged := mergedEmails[email.Email]; !isMerged {
+			filteredEmails = append(filteredEmails, email)
+		}
+	}
+
+	// Create a map of GitHub person ID to associated email
+	personEmailMap := make(map[string]string)
+	associatedEmails := make(map[string]bool)
+
+	for _, assoc := range emailAssociations {
+		// Get the person to get their email
+		person, err := h.personRepo.GetByID(assoc.PersonID)
+		if err == nil && person != nil {
+			personEmailMap[assoc.GitHubPersonID] = person.PrimaryEmail
+			associatedEmails[person.PrimaryEmail] = true
+		}
+	}
+
+	// Create a map of GitHub person ID to sorted emails for dropdown
+	personSortedEmails := make(map[string][]string)
+	for _, person := range people {
+		// Extract email addresses from filtered emails
+		var emailAddresses []string
+		for _, email := range filteredEmails {
+			emailAddresses = append(emailAddresses, email.Email)
+		}
+
+		// Sort emails by similarity to GitHub username
+		sortedEmails := h.textSimilarityService.SortEmailsBySimilarity(emailAddresses, person.Username)
+
+		// Extract just the email addresses in sorted order, excluding already associated emails
+		var sortedEmailAddresses []string
+		for _, emailSimilarity := range sortedEmails {
+			// Skip if this email is already associated with any GitHub person
+			if !associatedEmails[emailSimilarity.Email] {
+				sortedEmailAddresses = append(sortedEmailAddresses, emailSimilarity.Email)
+			}
+		}
+
+		personSortedEmails[person.ID] = sortedEmailAddresses
+	}
+
 	data := gin.H{
-		"Title":   "People - " + project.Name,
-		"User":    session,
-		"Project": project,
-		"People":  people,
+		"Title":              "People - " + project.Name,
+		"User":               session,
+		"Project":            project,
+		"People":             people,
+		"Emails":             filteredEmails,
+		"PersonEmailMap":     personEmailMap,
+		"AssociatedEmails":   associatedEmails,
+		"PersonSortedEmails": personSortedEmails,
 	}
 
 	c.HTML(http.StatusOK, "project_people", data)
@@ -1258,5 +1365,140 @@ func (h *ProjectHandler) DetachEmailMerge(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Email merge detached successfully",
+	})
+}
+
+// CreateGitHubPersonEmailAssociation creates an association between a GitHub person and an email
+func (h *ProjectHandler) CreateGitHubPersonEmailAssociation(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	githubPersonID := c.PostForm("github_person_id")
+	email := c.PostForm("email")
+
+	if projectID == "" || githubPersonID == "" || email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID, GitHub person ID, and email are required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Get or create person by email
+	person, err := h.personRepo.GetOrCreateByEmail("", email) // Empty name, will be updated if needed
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Error: " + err.Error(),
+		})
+		return
+	}
+
+	// Create the association
+	_, err = h.githubPersonEmailService.CreateGitHubPersonEmail(projectID, githubPersonID, person.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Error: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Email associated successfully",
+	})
+}
+
+// DeleteGitHubPersonEmailAssociation deletes an association between a GitHub person and an email
+func (h *ProjectHandler) DeleteGitHubPersonEmailAssociation(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	email := c.PostForm("email")
+
+	if projectID == "" || email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID and email are required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Get person by email
+	person, err := h.personRepo.GetByEmail(email)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Person not found",
+		})
+		return
+	}
+
+	// Delete the association
+	err = h.githubPersonEmailService.DeleteGitHubPersonEmailByPersonID(projectID, person.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Error: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Email association removed successfully",
 	})
 }

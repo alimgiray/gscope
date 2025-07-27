@@ -63,9 +63,10 @@
                     <div class="flex items-center gap-2">
                         <select class="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1" onchange="updateMergeTarget('{{.Email}}', this.value)">
                             <option value="">Select email to merge into this one...</option>
-                            {{range $.Emails}}
-                                {{if and (ne .Email $.Email) (not .IsMerged)}}
-                                    <option value="{{.Email}}">{{.Email}}</option>
+                            {{$sortedEmails := index $.EmailSortedEmails .Email}}
+                            {{range $sortedEmails}}
+                                {{if not (index $.AssociatedEmails .)}}
+                                    <option value="{{.}}">{{.}}</option>
                                 {{end}}
                             {{end}}
                         </select>
