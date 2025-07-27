@@ -17,14 +17,15 @@ import (
 
 type PullRequestWorker struct {
 	*BaseWorker
-	githubClient        *github.Client
-	jobRepo             *repositories.JobRepository
-	pullRequestService  *services.PullRequestService
-	prReviewService     *services.PRReviewService
-	githubPersonService *services.GithubPersonService
-	githubRepoService   *services.GitHubRepositoryService
-	projectRepo         *repositories.ProjectRepository
-	userRepo            *repositories.UserRepository
+	githubClient          *github.Client
+	jobRepo               *repositories.JobRepository
+	pullRequestService    *services.PullRequestService
+	prReviewService       *services.PRReviewService
+	githubPersonService   *services.GithubPersonService
+	githubRepoService     *services.GitHubRepositoryService
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository
+	projectRepo           *repositories.ProjectRepository
+	userRepo              *repositories.UserRepository
 }
 
 func NewPullRequestWorker(
@@ -35,19 +36,21 @@ func NewPullRequestWorker(
 	prReviewService *services.PRReviewService,
 	githubPersonService *services.GithubPersonService,
 	githubRepoService *services.GitHubRepositoryService,
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
 	projectRepo *repositories.ProjectRepository,
 	userRepo *repositories.UserRepository,
 ) *PullRequestWorker {
 	return &PullRequestWorker{
-		BaseWorker:          NewBaseWorker(workerID, models.JobTypePullRequest),
-		githubClient:        githubClient,
-		jobRepo:             jobRepo,
-		pullRequestService:  pullRequestService,
-		prReviewService:     prReviewService,
-		githubPersonService: githubPersonService,
-		githubRepoService:   githubRepoService,
-		projectRepo:         projectRepo,
-		userRepo:            userRepo,
+		BaseWorker:            NewBaseWorker(workerID, models.JobTypePullRequest),
+		githubClient:          githubClient,
+		jobRepo:               jobRepo,
+		pullRequestService:    pullRequestService,
+		prReviewService:       prReviewService,
+		githubPersonService:   githubPersonService,
+		githubRepoService:     githubRepoService,
+		projectRepositoryRepo: projectRepositoryRepo,
+		projectRepo:           projectRepo,
+		userRepo:              userRepo,
 	}
 }
 
@@ -121,12 +124,6 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
 
-	// Get project repositories
-	projectRepos, err := w.githubRepoService.GetProjectRepositories(job.ProjectID)
-	if err != nil {
-		return fmt.Errorf("failed to get project repositories: %s", err)
-	}
-
 	// Get GitHub token for the project owner
 	user, err := w.getUserByProjectID(job.ProjectID)
 	if err != nil {
@@ -143,24 +140,28 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 	totalReviews := 0
 	totalPeople := 0
 
-	// Process each tracked repository
-	for _, projectRepo := range projectRepos {
+	// Check if this is a repository-specific job
+	if job.ProjectRepositoryID != nil {
+		// Process only the specific repository
+		projectRepo, err := w.projectRepositoryRepo.GetByID(*job.ProjectRepositoryID)
+		if err != nil {
+			return fmt.Errorf("failed to get project repository %s: %s", *job.ProjectRepositoryID, err)
+		}
+
 		if !projectRepo.IsTracked {
-			continue
+			return fmt.Errorf("repository %s is not tracked", *job.ProjectRepositoryID)
 		}
 
 		// Get GitHub repository info
 		githubRepo, err := w.githubRepoService.GetGitHubRepository(projectRepo.GithubRepoID)
 		if err != nil {
-			log.Printf("Failed to get GitHub repository %s: %s", projectRepo.GithubRepoID, err)
-			continue
+			return fmt.Errorf("failed to get GitHub repository %s: %s", projectRepo.GithubRepoID, err)
 		}
 
 		// Parse owner and repo name from full name
 		owner, repoName, err := parseRepoFullName(githubRepo.FullName)
 		if err != nil {
-			log.Printf("Failed to parse repository name %s: %s", githubRepo.FullName, err)
-			continue
+			return fmt.Errorf("failed to parse repository name %s: %s", githubRepo.FullName, err)
 		}
 
 		log.Printf("Processing pull requests for %s/%s", owner, repoName)
@@ -168,8 +169,7 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 		// Fetch pull requests from GitHub
 		pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName)
 		if err != nil {
-			log.Printf("Failed to fetch pull requests for %s/%s: %s", owner, repoName, err)
-			continue
+			return fmt.Errorf("failed to fetch pull requests for %s/%s: %s", owner, repoName, err)
 		}
 
 		// Process each pull request
@@ -193,6 +193,66 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 					continue
 				}
 				totalReviews++
+			}
+		}
+	} else {
+		// Legacy: Process all tracked repositories (for backward compatibility)
+		projectRepos, err := w.githubRepoService.GetProjectRepositories(job.ProjectID)
+		if err != nil {
+			return fmt.Errorf("failed to get project repositories: %s", err)
+		}
+
+		// Process each tracked repository
+		for _, projectRepo := range projectRepos {
+			if !projectRepo.IsTracked {
+				continue
+			}
+
+			// Get GitHub repository info
+			githubRepo, err := w.githubRepoService.GetGitHubRepository(projectRepo.GithubRepoID)
+			if err != nil {
+				log.Printf("Failed to get GitHub repository %s: %s", projectRepo.GithubRepoID, err)
+				continue
+			}
+
+			// Parse owner and repo name from full name
+			owner, repoName, err := parseRepoFullName(githubRepo.FullName)
+			if err != nil {
+				log.Printf("Failed to parse repository name %s: %s", githubRepo.FullName, err)
+				continue
+			}
+
+			log.Printf("Processing pull requests for %s/%s", owner, repoName)
+
+			// Fetch pull requests from GitHub
+			pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName)
+			if err != nil {
+				log.Printf("Failed to fetch pull requests for %s/%s: %s", owner, repoName, err)
+				continue
+			}
+
+			// Process each pull request
+			for _, pr := range pullRequests {
+				if err := w.processPullRequest(ctx, userGithubClient, owner, repoName, pr, githubRepo.ID); err != nil {
+					log.Printf("Failed to process pull request #%d: %s", pr.GetNumber(), err)
+					continue
+				}
+				totalPRs++
+
+				// Fetch and process reviews for this PR
+				reviews, err := w.fetchPullRequestReviews(ctx, userGithubClient, owner, repoName, pr.GetNumber())
+				if err != nil {
+					log.Printf("Failed to fetch reviews for PR #%d: %s", pr.GetNumber(), err)
+					continue
+				}
+
+				for _, review := range reviews {
+					if err := w.processPullRequestReview(ctx, review, githubRepo.ID, pr.GetID(), userGithubClient); err != nil {
+						log.Printf("Failed to process review %d: %s", review.GetID(), err)
+						continue
+					}
+					totalReviews++
+				}
 			}
 		}
 	}

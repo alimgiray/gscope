@@ -109,6 +109,7 @@ func (wm *WorkerManager) StartAll() error {
 			wm.prReviewService,
 			wm.githubPersonService,
 			wm.githubRepoService,
+			wm.projectRepositoryRepo,
 			wm.projectRepo,
 			wm.userRepo,
 		)
