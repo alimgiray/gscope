@@ -110,13 +110,12 @@ func (r *CommitRepository) GetByRepositoryID(repositoryID string) ([]*models.Com
 }
 
 // GetEmailStatsByProjectID retrieves email statistics for a project
-func (r *CommitRepository) GetEmailStatsByProjectID(projectID string) ([]*models.EmailStats, error) {
+func (r *CommitRepository) GetEmailStatsByProjectID(projectID string, mergedEmails map[string]string) ([]*models.EmailStats, error) {
 
 	query := `
 		SELECT 
 			c.author_email,
 			c.author_name,
-			COUNT(*) as commit_count,
 			MIN(c.created_at) as first_commit,
 			MAX(c.created_at) as last_commit
 		FROM commits c
@@ -124,7 +123,7 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string) ([]*models
 		INNER JOIN project_repositories pr ON gr.id = pr.github_repo_id
 		WHERE pr.project_id = ?
 		GROUP BY c.author_email, c.author_name
-		ORDER BY commit_count DESC, c.author_email ASC
+		ORDER BY c.author_email ASC
 	`
 
 	rows, err := r.db.Query(query, projectID)
@@ -142,7 +141,6 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string) ([]*models
 		err := rows.Scan(
 			&stats.Email,
 			&authorName,
-			&stats.CommitCount,
 			&firstCommitStr,
 			&lastCommitStr,
 		)
@@ -166,6 +164,74 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string) ([]*models
 		}
 
 		emailStats = append(emailStats, stats)
+	}
+
+	// Apply email merges
+	if mergedEmails != nil {
+		emailStatsMap := make(map[string]*models.EmailStats)
+		mergedIntoMap := make(map[string][]string) // target_email -> []source_emails
+
+		// First pass: collect all stats and apply merges
+		for _, stats := range emailStats {
+			// Check if this email should be merged
+			if targetEmail, exists := mergedEmails[stats.Email]; exists {
+				// This email should be merged into targetEmail
+				if targetStats, targetExists := emailStatsMap[targetEmail]; targetExists {
+					// Target email already exists, merge the stats
+					if stats.FirstCommit != nil && (targetStats.FirstCommit == nil || stats.FirstCommit.Before(*targetStats.FirstCommit)) {
+						targetStats.FirstCommit = stats.FirstCommit
+					}
+					if stats.LastCommit != nil && (targetStats.LastCommit == nil || stats.LastCommit.After(*targetStats.LastCommit)) {
+						targetStats.LastCommit = stats.LastCommit
+					}
+				} else {
+					// Target email doesn't exist yet, create it
+					mergedStats := &models.EmailStats{
+						Email:       targetEmail,
+						Name:        stats.Name,
+						FirstCommit: stats.FirstCommit,
+						LastCommit:  stats.LastCommit,
+					}
+					emailStatsMap[targetEmail] = mergedStats
+				}
+
+				// Track which emails are merged into this target
+				mergedIntoMap[targetEmail] = append(mergedIntoMap[targetEmail], stats.Email)
+			} else {
+				// This email is not merged, check if it's a target email
+				if _, isTarget := emailStatsMap[stats.Email]; !isTarget {
+					emailStatsMap[stats.Email] = stats
+				}
+			}
+		}
+
+		// Second pass: mark merged emails and populate merged emails list
+		for email, stats := range emailStatsMap {
+			// Check if this email has been merged into another
+			if _, isMerged := mergedEmails[email]; isMerged {
+				stats.IsMerged = true
+			}
+
+			// Add list of emails merged into this one
+			if mergedEmails, hasMerged := mergedIntoMap[email]; hasMerged {
+				stats.MergedEmails = mergedEmails
+			}
+		}
+
+		// Convert map back to slice (only include target emails, not merged ones)
+		emailStats = make([]*models.EmailStats, 0, len(emailStatsMap))
+		for _, stats := range emailStatsMap {
+			emailStats = append(emailStats, stats)
+		}
+
+		// Re-sort alphabetically by email
+		for i := 0; i < len(emailStats)-1; i++ {
+			for j := i + 1; j < len(emailStats); j++ {
+				if emailStats[i].Email > emailStats[j].Email {
+					emailStats[i], emailStats[j] = emailStats[j], emailStats[i]
+				}
+			}
+		}
 	}
 
 	return emailStats, nil

@@ -62,6 +62,8 @@ func main() {
 	prReviewService := services.NewPRReviewService(prReviewRepo)
 	githubPersonRepo := repositories.NewGithubPersonRepository(database.DB)
 	githubPersonService := services.NewGithubPersonService(githubPersonRepo)
+	emailMergeRepo := repositories.NewEmailMergeRepository(database.DB)
+	emailMergeService := services.NewEmailMergeService(emailMergeRepo)
 
 	// Initialize GitHub client
 	githubClient := github.NewClient(nil)
@@ -83,7 +85,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, emailMergeService)
 	loadTemplates(router)
 
 	// Start workers
@@ -115,12 +117,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, emailMergeService *services.EmailMergeService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, emailMergeService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -146,6 +148,8 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/create", projectHandler.CreateProject)
 		projects.GET("/:id", projectHandler.ViewProject)
 		projects.GET("/:id/emails", projectHandler.ViewProjectEmails)
+		projects.POST("/:id/emails/merge", projectHandler.CreateEmailMerge)
+		projects.POST("/:id/emails/detach", projectHandler.DetachEmailMerge)
 		projects.GET("/:id/people", projectHandler.ViewProjectPeople)
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
 		projects.POST("/:id/analyze", projectHandler.CreateAnalyzeJobs)

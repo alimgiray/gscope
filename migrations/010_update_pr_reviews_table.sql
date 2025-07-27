@@ -26,7 +26,7 @@ CREATE TABLE pr_reviews (
 );
 
 -- Recreate the trigger
-CREATE TRIGGER update_pr_reviews_updated_at
+CREATE TRIGGER IF NOT EXISTS update_pr_reviews_updated_at
     AFTER UPDATE ON pr_reviews
     FOR EACH ROW
 BEGIN

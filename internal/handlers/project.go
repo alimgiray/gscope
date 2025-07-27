@@ -23,12 +23,14 @@ type ProjectHandler struct {
 	jobService               *services.JobService
 	commitRepo               *repositories.CommitRepository
 	githubPersonRepo         *repositories.GithubPersonRepository
+	emailMergeService        *services.EmailMergeService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
 	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
 	githubRepoService *services.GitHubRepositoryService, jobService *services.JobService,
-	commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository) *ProjectHandler {
+	commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository,
+	emailMergeService *services.EmailMergeService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:           projectService,
 		userService:              userService,
@@ -38,6 +40,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		jobService:               jobService,
 		commitRepo:               commitRepo,
 		githubPersonRepo:         githubPersonRepo,
+		emailMergeService:        emailMergeService,
 	}
 }
 
@@ -1036,8 +1039,14 @@ func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
 		return
 	}
 
-	// Get email statistics
-	emails, err := h.commitRepo.GetEmailStatsByProjectID(projectID)
+	// Get merged emails for this project
+	mergedEmails, err := h.emailMergeService.GetMergedEmailsForProject(projectID)
+	if err != nil {
+		mergedEmails = make(map[string]string)
+	}
+
+	// Get email statistics (with merges applied)
+	emails, err := h.commitRepo.GetEmailStatsByProjectID(projectID, mergedEmails)
 	if err != nil {
 		emails = []*models.EmailStats{}
 	}
@@ -1105,4 +1114,149 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "project_people", data)
+}
+
+// CreateEmailMerge creates an email merge
+func (h *ProjectHandler) CreateEmailMerge(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	sourceEmail := c.PostForm("source_email")
+	targetEmail := c.PostForm("target_email")
+
+	if projectID == "" || sourceEmail == "" || targetEmail == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID, source email, and target email are required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Check if source email is already merged
+	isMerged, _, err := h.emailMergeService.IsEmailMerged(projectID, sourceEmail)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to check email merge status: " + err.Error(),
+		})
+		return
+	}
+
+	if isMerged {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Email is already merged into another email",
+		})
+		return
+	}
+
+	// Create the email merge (swap source and target so the current row stays)
+	err = h.emailMergeService.CreateEmailMerge(projectID, targetEmail, sourceEmail)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create email merge: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Email merge created successfully",
+	})
+}
+
+// DetachEmailMerge detaches all emails merged into a target email
+func (h *ProjectHandler) DetachEmailMerge(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+
+	var request struct {
+		TargetEmail string `json:"target_email"`
+		SourceEmail string `json:"source_email"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request body",
+		})
+		return
+	}
+
+	if projectID == "" || request.TargetEmail == "" || request.SourceEmail == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID, target email, and source email are required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Detach the specific email merge
+	err = h.emailMergeService.DeleteEmailMergeBySourceAndTarget(projectID, request.SourceEmail, request.TargetEmail)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to detach email merge: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Email merge detached successfully",
+	})
 }

@@ -1,0 +1,219 @@
+# GScope - GitHub Repository Analytics Tool
+
+You are an AI assistant helping to develop GScope, a GitHub repository analytics tool written in Go. This project analyzes GitHub repositories to provide insights on commits, pull requests, contributors, and code statistics.
+
+## Project Overview
+
+GScope is a web application built with:
+- **Backend**: Go with Gin web framework
+- **Database**: SQLite with custom migration system
+- **Frontend**: HTML templates with vanilla JavaScript
+- **Authentication**: GitHub OAuth
+- **Architecture**: Repository pattern with services layer
+
+The application allows users to:
+- Connect GitHub repositories to projects
+- Clone and analyze repository data
+- Track commits, pull requests, and code statistics
+- Manage contributor email merging
+- View project analytics and contributor insights
+
+## Project Structure
+
+```
+gscope/
+├── cmd/server/main.go          # Application entry point
+├── internal/
+│   ├── handlers/               # HTTP handlers (Gin controllers)
+│   ├── middleware/             # Auth and session middleware
+│   ├── models/                 # Data models and validation
+│   ├── repositories/           # Database access layer
+│   ├── services/               # Business logic layer
+│   └── workers/                # Background job workers
+├── pkg/
+│   ├── config/                 # Configuration management
+│   ├── database/               # Database connection and migrations
+│   └── utils/                  # Utility functions
+├── migrations/                 # SQL migration files
+├── web/
+│   ├── templates/              # HTML templates
+│   └── static/                 # CSS and JavaScript assets
+└── clones/                     # Git repository clones storage
+```
+
+## Code Standards & Patterns
+
+### Go Code Conventions
+
+1. **Package Structure**:
+   - Use clear, descriptive package names
+   - Group related functionality together
+   - Follow Go naming conventions (PascalCase for exports, camelCase for private)
+
+2. **Error Handling**:
+   - Always handle errors explicitly
+   - Use custom error types for validation (e.g., `ValidationError`)
+   - Return meaningful error messages to users
+   - Log internal errors but don't expose them to users
+
+3. **Repository Pattern**:
+   - All database operations go through repository layer
+   - Repositories handle only data access, no business logic
+   - Use dependency injection for repositories in services
+
+4. **Service Layer**:
+   - Contains all business logic
+   - Validates input before calling repositories
+   - Handles complex operations and orchestration
+   - Services can depend on other services
+
+5. **Handler Pattern**:
+   - Handlers are thin controllers that orchestrate requests
+   - Extract and validate input parameters
+   - Call appropriate services
+   - Return appropriate HTTP responses
+   - Use middleware for authentication and session management
+
+### Database Conventions
+
+1. **Models**:
+   - Use `uuid.UUID` for primary keys
+   - Include `CreatedAt`, `UpdatedAt` timestamps
+   - Use `DeletedAt *time.Time` for soft deletes
+   - Include validation methods on models
+
+2. **Migrations**:
+   - Numbered sequentially (001, 002, etc.)
+   - Include descriptive names and dates
+   - Use `IF NOT EXISTS` for safety
+   - Include proper foreign key constraints
+   - Add indexes for performance
+
+3. **SQL Style**:
+   - Use uppercase for SQL keywords
+   - Use snake_case for table and column names
+   - Include proper constraints and indexes
+   - Use triggers for automatic timestamp updates
+
+### Frontend Conventions
+
+1. **Templates**:
+   - Use Go template syntax with semantic naming
+   - Include proper error handling in templates
+   - Use consistent styling with terminal-like theme
+   - Include CSRF protection where needed
+
+2. **JavaScript**:
+   - Use vanilla JavaScript (no frameworks)
+   - Implement proper error handling for AJAX calls
+   - Include loading states for async operations
+   - Maintain scroll position during page refreshes
+   - Use toast notifications for user feedback
+
+3. **CSS**:
+   - Terminal-inspired dark theme with green accents
+   - Use CSS custom properties for consistent theming
+   - Mobile-responsive design
+   - Minimal, clean aesthetics
+   - Always use Tailwind for styling
+
+## Key Components
+
+### Authentication & Authorization
+- GitHub OAuth integration
+- Session-based authentication with middleware
+- User ownership validation for all resources
+
+### Job System
+- Background workers for repository cloning and analysis
+- Job queue with different job types (clone, commit, pull_request, stats)
+- Job status tracking with error handling
+
+### Data Models
+- **User**: GitHub authenticated users
+- **Project**: User-owned project containers
+- **GitHubRepository**: GitHub repo metadata
+- **ProjectRepository**: Link between projects and GitHub repos
+- **Commit/CommitFile**: Git commit and file change data
+- **PullRequest/PRReview**: Pull request and review data
+- **EmailMerge**: Email alias management for contributors
+
+### Worker System
+- **CloneWorker**: Clones repositories and processes commits
+- **CommitWorker**: Analyzes commit data and file changes
+- **PullRequestWorker**: Fetches PR and review data
+- **StatsWorker**: Calculates project statistics
+
+## Development Guidelines
+
+### When Adding New Features
+
+1. **Models First**: Define data models with proper validation
+2. **Migration**: Create database migration for schema changes
+3. **Repository**: Implement data access methods
+4. **Service**: Add business logic and validation
+5. **Handler**: Create HTTP endpoints
+6. **Templates**: Update frontend templates if needed
+7. **Tests**: Add appropriate test coverage
+
+### When Modifying Existing Code
+
+1. **Follow Existing Patterns**: Use the same architectural patterns
+2. **Maintain Consistency**: Follow established naming and structure conventions
+3. **Validate Input**: Always validate user input at service layer
+4. **Handle Errors**: Provide meaningful error messages
+5. **Update Documentation**: Keep comments and documentation current
+
+### Security Considerations
+
+1. **Authentication**: Always verify user authentication and ownership
+2. **Input Validation**: Sanitize and validate all user input
+3. **SQL Injection**: Use parameterized queries (handled by repositories)
+4. **Session Security**: Secure session handling in middleware
+5. **GitHub Tokens**: Safely store and use GitHub access tokens
+
+### Performance Guidelines
+
+1. **Database**: Use indexes for frequently queried columns
+2. **Caching**: Consider caching for expensive operations
+3. **Background Jobs**: Use workers for time-consuming operations
+4. **Frontend**: Minimize JavaScript and implement efficient DOM updates
+
+## Common Tasks
+
+### Adding a New Model
+1. Create model struct with validation in `internal/models/`
+2. Add migration file in `migrations/`
+3. Create repository in `internal/repositories/`
+4. Add service in `internal/services/`
+5. Update dependency injection in `main.go`
+
+### Adding a New API Endpoint
+1. Add handler method to appropriate handler
+2. Add route in `main.go` setupRoutes function
+3. Implement proper authentication middleware if needed
+4. Update frontend templates if needed
+
+### Adding a New Worker
+1. Create worker struct in `internal/workers/`
+2. Implement worker interface methods
+3. Add to worker manager initialization
+4. Create appropriate job types in models
+
+## Testing Strategy
+
+- Unit tests for services and repositories
+- Integration tests for handlers
+- Mock dependencies for isolated testing
+- Test database operations with actual SQLite database
+- Frontend testing through manual testing and user workflows
+
+## Deployment Notes
+
+- SQLite database for simplicity
+- Static file serving through Gin
+- Environment-based configuration
+- Background workers run in same process
+- Git repositories cloned to local filesystem
+
+Remember: This is a GitHub analytics tool focused on providing insights into repository activity, contributor behavior, and project statistics. Always consider the end user's need for clear, actionable data when developing features.

@@ -1,13 +1,15 @@
 {{define "project_emails"}}
 {{template "header" .}}
 
+
+
 <div class="card">
     <div class="flex justify-between items-center">
         <div class="card-header">Emails - {{.Project.Name}}</div>
         <a href="/projects/{{.Project.ID}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
     </div>
     <div class="text-xs text-gray-400 mt-2">
-        All emails from commits in this project
+        All emails from commits in this project. Merge duplicate emails to get accurate statistics.
     </div>
 </div>
 
@@ -18,7 +20,7 @@
         {{if .Emails}}
             <div class="space-y-2">
                 {{range .Emails}}
-                <div class="flex justify-between items-center p-2 border border-gray-600 rounded">
+                <div class="flex justify-between items-center p-2 border border-gray-600 rounded {{if .IsMerged}}bg-gray-800{{end}}">
                     <div class="flex-1">
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-mono">{{.Email}}</span>
@@ -26,9 +28,7 @@
                                 <span class="text-xs text-gray-400">({{.Name}})</span>
                             {{end}}
                         </div>
-                        <div class="text-xs text-gray-400 mt-1">
-                            Commits: {{.CommitCount}}
-                        </div>
+
                         {{if .FirstCommit}}
                             <div class="text-xs text-gray-400 mt-1">
                                 First commit: {{.FirstCommit.Format "2006-01-02 15:04:05"}}
@@ -39,6 +39,39 @@
                                 Last commit: {{.LastCommit.Format "2006-01-02 15:04:05"}}
                             </div>
                         {{end}}
+                                                            {{if .MergedEmails}}
+                                        <div class="text-xs text-gray-400 mt-1">
+                                            <span class="text-yellow-400">Merged emails:</span>
+                                            {{$currentEmail := .Email}}
+                                            {{range .MergedEmails}}
+                                                <div class="flex items-center gap-1 mt-1">
+                                                    <span class="font-mono text-xs">{{.}}</span>
+                                                    <button 
+                                                        class="text-xs bg-red-600 hover:bg-red-700 text-white px-1 py-0.5 rounded" 
+                                                        title="Detach {{.}} from {{$currentEmail}}"
+                                                        data-project-id="{{$.Project.ID}}"
+                                                        data-target-email="{{$currentEmail}}"
+                                                        data-source-email="{{.}}"
+                                                        onclick="detachEmailFromButton(this)">
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            {{end}}
+                                        </div>
+                                    {{end}}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select class="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1" onchange="updateMergeTarget('{{.Email}}', this.value)">
+                            <option value="">Select email to merge into this one...</option>
+                            {{range $.Emails}}
+                                {{if and (ne .Email $.Email) (not .IsMerged)}}
+                                    <option value="{{.Email}}">{{.Email}}</option>
+                                {{end}}
+                            {{end}}
+                        </select>
+                        <button onclick="mergeEmail('{{$.Project.ID}}', '{{.Email}}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded" disabled id="merge-btn-{{.Email}}">
+                            Merge Here
+                        </button>
                     </div>
                 </div>
                 {{end}}
@@ -48,6 +81,89 @@
         {{end}}
     </div>
 </div>
+
+<script>
+let mergeTargets = {};
+
+function updateMergeTarget(sourceEmail, targetEmail) {
+    mergeTargets[sourceEmail] = targetEmail;
+    const mergeBtn = document.getElementById('merge-btn-' + sourceEmail);
+    if (mergeBtn) {
+        mergeBtn.disabled = !targetEmail;
+    }
+}
+
+function mergeEmail(projectId, sourceEmail) {
+    const targetEmail = mergeTargets[sourceEmail];
+    if (!targetEmail) {
+        alert('Please select a target email first');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('source_email', sourceEmail);
+    formData.append('target_email', targetEmail);
+
+    fetch(`/projects/${projectId}/emails/merge`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page to show updated statistics
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to merge email');
+    });
+}
+
+function detachEmailFromButton(button) {
+    const projectId = button.getAttribute('data-project-id');
+    const targetEmail = button.getAttribute('data-target-email');
+    const sourceEmail = button.getAttribute('data-source-email');
+    
+    console.log('Detach called with:', { projectId, targetEmail, sourceEmail });
+    
+    if (!projectId || !targetEmail || !sourceEmail) {
+        alert('Missing required parameters for detach');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to detach ${sourceEmail} from ${targetEmail}?`)) {
+        return;
+    }
+
+    fetch(`/projects/${projectId}/emails/detach`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            target_email: targetEmail,
+            source_email: sourceEmail
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page to show updated statistics
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to detach email');
+    });
+}
+</script>
 
 {{template "footer" .}}
 {{end}} 
