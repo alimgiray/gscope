@@ -256,19 +256,19 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			}
 		}
 
-		// Get project-level jobs for analyze status
-		projectJobs, err := h.jobService.GetProjectJobs(projectID)
+		// Get repository-specific jobs for analyze status
+		repoJobs, err := h.jobService.GetProjectRepositoryJobs(projectRepo.ID)
 		if err != nil {
-			projectJobs = []*models.Job{}
+			repoJobs = []*models.Job{}
 		}
 
-		// Calculate analyze job status (project-level jobs)
+		// Calculate analyze job status (repository-specific jobs)
 		hasActiveAnalyzeJobs := false
 		latestAnalyzeJobFailed := false
 		latestAnalyzeJobError := ""
 
 		// Check for active pull_request or stats jobs (stats depends on pull_request)
-		for _, job := range projectJobs {
+		for _, job := range repoJobs {
 			if job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
 				if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
 					hasActiveAnalyzeJobs = true
@@ -908,7 +908,15 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 	}
 
 	// Create the pull_request and stats jobs
-	err = h.jobService.CreatePullRequestAndStatsJobs(projectID)
+	if projectRepositoryID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project repository ID is required",
+		})
+		return
+	}
+
+	err = h.jobService.CreatePullRequestAndStatsJobs(projectID, projectRepositoryID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,

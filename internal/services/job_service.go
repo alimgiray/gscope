@@ -40,9 +40,10 @@ func (s *JobService) CreateCloneAndCommitJobs(projectID string, projectRepositor
 }
 
 // CreatePullRequestAndStatsJobs creates both pull_request and stats jobs with dependency
-func (s *JobService) CreatePullRequestAndStatsJobs(projectID string) error {
+func (s *JobService) CreatePullRequestAndStatsJobs(projectID string, projectRepositoryID string) error {
 	// Create pull_request job first
 	pullRequestJob := models.NewJob(projectID, models.JobTypePullRequest)
+	pullRequestJob.ProjectRepositoryID = &projectRepositoryID
 
 	if err := s.jobRepo.Create(pullRequestJob); err != nil {
 		return err
@@ -50,6 +51,7 @@ func (s *JobService) CreatePullRequestAndStatsJobs(projectID string) error {
 
 	// Create stats job that depends on pull_request job
 	statsJob := models.NewJob(projectID, models.JobTypeStats)
+	statsJob.ProjectRepositoryID = &projectRepositoryID
 	statsJob.DependsOn = &pullRequestJob.ID
 
 	if err := s.jobRepo.Create(statsJob); err != nil {

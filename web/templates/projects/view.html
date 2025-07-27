@@ -101,11 +101,11 @@
                                     Analyzing...
                                 </button>
                             {{else if .LatestAnalyzeJobFailed}}
-                                <button onclick="analyzeRepository('{{$.Project.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestAnalyzeJobError}}">
+                                <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestAnalyzeJobError}}">
                                     Retry Analyze
                                 </button>
                             {{else}}
-                                <button onclick="analyzeRepository('{{$.Project.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
+                                <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
                                     Analyze
                                 </button>
                             {{end}}
@@ -308,7 +308,7 @@ function toggleTracking(projectId, repositoryId, currentStatus) {
     });
 }
 
-function analyzeRepository(projectId) {
+function analyzeRepository(projectId, repositoryId) {
     // Prevent any default behavior that might cause scroll jump
     event.preventDefault();
     
@@ -319,7 +319,7 @@ function analyzeRepository(projectId) {
     button.textContent = 'Analyzing...';
     button.className = 'text-xs text-yellow-400 cursor-not-allowed';
     
-    fetch(`/projects/${projectId}/analyze`, {
+    fetch(`/projects/${projectId}/repositories/${repositoryId}/analyze`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
