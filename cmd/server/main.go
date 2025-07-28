@@ -67,6 +67,24 @@ func main() {
 	githubPersonEmailRepo := repositories.NewGitHubPersonEmailRepository(database.DB)
 	githubPersonEmailService := services.NewGitHubPersonEmailService(githubPersonEmailRepo)
 	textSimilarityService := services.NewTextSimilarityService()
+	projectGithubPersonRepo := repositories.NewProjectGithubPersonRepository(database.DB)
+	projectGithubPersonService := services.NewProjectGithubPersonService(projectGithubPersonRepo)
+
+	// People statistics service
+	peopleStatsRepo := repositories.NewPeopleStatisticsRepository(database.DB)
+	peopleStatsService := services.NewPeopleStatisticsService(
+		peopleStatsRepo,
+		commitRepo,
+		commitFileRepo,
+		pullRequestRepo,
+		prReviewRepo,
+		githubPersonRepo,
+		emailMergeRepo,
+		githubPersonEmailRepo,
+		personRepo,
+		scoreSettingsRepo,
+		excludedExtensionRepo,
+	)
 
 	// Initialize GitHub client
 	githubClient := github.NewClient(nil)
@@ -74,8 +92,8 @@ func main() {
 	// Initialize worker manager
 	workerManager := workers.NewWorkerManager(
 		jobRepo, cloneService, projectRepoRepo, commitRepo, commitFileRepo, personRepo, githubRepoRepo,
-		githubRepoService, pullRequestService, prReviewService, githubPersonService, githubClient,
-		projectRepo, userRepo,
+		githubRepoService, pullRequestService, prReviewService, githubPersonService, peopleStatsService, githubClient,
+		projectRepo, userRepo, projectGithubPersonService, pullRequestRepo,
 	)
 
 	// Initialize router
@@ -159,8 +177,12 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
 		projects.POST("/:id/analyze", projectHandler.CreateAnalyzeJobs)
 		projects.POST("/:id/repositories/:repository_id/clone", projectHandler.CreateCloneJob)
+		projects.POST("/:id/repositories/:repository_id/fetch-github", projectHandler.CreateFetchGithubJob)
 		projects.POST("/:id/repositories/:repository_id/analyze", projectHandler.CreateAnalyzeJobs)
 		projects.POST("/:id/clone-all", projectHandler.CloneAllRepositories)
+		projects.POST("/:id/track-all", projectHandler.TrackAllRepositories)
+		projects.POST("/:id/fetch-all", projectHandler.FetchAllRepositories)
+		projects.POST("/:id/analyze-all", projectHandler.AnalyzeAllRepositories)
 		projects.POST("/:id/repositories/:repository_id/toggle-track", projectHandler.ToggleRepositoryTracking)
 		projects.GET("/:id/settings", projectHandler.ProjectSettings)
 		projects.POST("/:id/settings/name", projectHandler.UpdateProjectName)

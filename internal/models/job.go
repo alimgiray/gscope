@@ -43,11 +43,14 @@ type Job struct {
 
 // NewJob creates a new Job with a generated UUID
 func NewJob(projectID string, jobType JobType) *Job {
+	now := time.Now()
 	return &Job{
 		ID:        uuid.New().String(),
 		ProjectID: projectID,
 		JobType:   jobType,
 		Status:    JobStatusPending,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 

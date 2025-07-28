@@ -276,3 +276,46 @@ func (r *CommitRepository) ExistsByCommitSHA(commitSHA string) (bool, error) {
 	err := r.db.QueryRow(query, commitSHA).Scan(&count)
 	return count > 0, err
 }
+
+// GetDateRangeByRepositoryID gets the minimum and maximum commit dates for a repository
+func (r *CommitRepository) GetDateRangeByRepositoryID(repositoryID string) (time.Time, time.Time, error) {
+	query := `SELECT MIN(commit_date), MAX(commit_date) FROM commits WHERE github_repository_id = ?`
+
+	var minDateStr, maxDateStr string
+	err := r.db.QueryRow(query, repositoryID).Scan(&minDateStr, &maxDateStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	// Parse the date strings
+	minDate, err := time.Parse("2006-01-02 15:04:05-07:00", minDateStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	maxDate, err := time.Parse("2006-01-02 15:04:05-07:00", maxDateStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	return minDate, maxDate, nil
+}
+
+// GetLatestCommitDateByRepositoryID gets the latest commit date for a repository
+func (r *CommitRepository) GetLatestCommitDateByRepositoryID(repositoryID string) (time.Time, error) {
+	query := `SELECT MAX(commit_date) FROM commits WHERE github_repository_id = ?`
+
+	var latestDateStr string
+	err := r.db.QueryRow(query, repositoryID).Scan(&latestDateStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// Parse the date string
+	latestDate, err := time.Parse("2006-01-02 15:04:05-07:00", latestDateStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return latestDate, nil
+}

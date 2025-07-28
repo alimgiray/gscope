@@ -22,8 +22,17 @@
         <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
             <button type="submit" class="btn" style="background: #059669; color: white;">Fetch Repositories</button>
         </form>
+        <button class="btn" style="background: #f59e0b; color: white;" onclick="trackAllRepositories('{{.Project.ID}}')">
+            Track All
+        </button>
         <button class="btn" style="background: #7c3aed; color: white;" onclick="cloneAllRepositories('{{.Project.ID}}')">
             Clone All
+        </button>
+        <button class="btn" style="background: #10b981; color: white;" onclick="fetchAllRepositories('{{.Project.ID}}')">
+            Fetch Github All
+        </button>
+        <button class="btn" style="background: #3b82f6; color: white;" onclick="analyzeAllRepositories('{{.Project.ID}}')">
+            Analyze All
         </button>
         <a href="/projects/{{.Project.ID}}/emails" class="btn" style="background: #dc2626; color: white;">Emails</a>
         <a href="/projects/{{.Project.ID}}/people" class="btn" style="background: #2563eb; color: white;">People</a>
@@ -78,7 +87,6 @@
                         </div>
                     </div>
                     <div class="flex gap-1">
-                        <a href="{{.GitHubRepo.URL}}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">View</a>
                         {{if .ProjectRepo.IsTracked}}
                             {{if .HasActiveCloneJobs}}
                                 <button disabled class="text-xs text-yellow-400 cursor-not-allowed">
@@ -94,20 +102,28 @@
                                 </button>
                             {{end}}
                         {{end}}
-                        
                         {{if .ProjectRepo.IsTracked}}
                             {{if .HasActiveAnalyzeJobs}}
                                 <button disabled class="text-xs text-yellow-400 cursor-not-allowed">
-                                    Analyzing...
+                                    Processing...
                                 </button>
                             {{else if .LatestAnalyzeJobFailed}}
                                 <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestAnalyzeJobError}}">
                                     Retry Analyze
                                 </button>
                             {{else}}
-                                <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
-                                    Analyze
+                                <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-green-400 hover:text-green-300">
+                                    Fetch Github
                                 </button>
+                                {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
+                                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
+                                        Analyze
+                                    </button>
+                                {{else}}
+                                    <button disabled class="text-xs text-gray-400 cursor-not-allowed" title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
+                                        Analyze
+                                    </button>
+                                {{end}}
                             {{end}}
                         {{end}}
                         <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" class="text-xs {{if .ProjectRepo.IsTracked}}text-red-400 hover:text-red-300{{else}}text-green-400 hover:text-green-300{{end}}">
@@ -308,6 +324,50 @@ function toggleTracking(projectId, repositoryId, currentStatus) {
     });
 }
 
+function fetchGithub(projectId, repositoryId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    // Find the button that was clicked and disable it immediately
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Fetching...';
+    button.className = 'text-xs text-yellow-400 cursor-not-allowed';
+    
+    fetch(`/projects/${projectId}/repositories/${repositoryId}/fetch-github`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Fetch Github job created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            // Restore button state on error
+            button.disabled = false;
+            button.textContent = originalText;
+            button.className = 'text-xs text-green-400 hover:text-green-300';
+            showToast(data.message || 'Failed to create fetch Github job', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        // Restore button state on error
+        button.disabled = false;
+        button.textContent = originalText;
+        button.className = 'text-xs text-green-400 hover:text-green-300';
+        showToast('Failed to create fetch Github job', 'error');
+    });
+}
+
 function analyzeRepository(projectId, repositoryId) {
     // Prevent any default behavior that might cause scroll jump
     event.preventDefault();
@@ -328,7 +388,7 @@ function analyzeRepository(projectId, repositoryId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast(data.message || 'Analysis jobs created successfully', 'success');
+            showToast(data.message || 'Analysis job created successfully', 'success');
             // Refresh the page after a short delay to show updated status
             setTimeout(() => {
                 saveScrollPosition();
@@ -339,7 +399,7 @@ function analyzeRepository(projectId, repositoryId) {
             button.disabled = false;
             button.textContent = originalText;
             button.className = 'text-xs text-blue-400 hover:text-blue-300';
-            showToast(data.message || 'Failed to create analysis jobs', 'error');
+            showToast(data.message || 'Failed to create analysis job', 'error');
         }
     })
     .catch(error => {
@@ -348,7 +408,7 @@ function analyzeRepository(projectId, repositoryId) {
         button.disabled = false;
         button.textContent = originalText;
         button.className = 'text-xs text-blue-400 hover:text-blue-300';
-        showToast('Failed to create analysis jobs', 'error');
+        showToast('Failed to create analysis job', 'error');
     });
 }
 
@@ -366,6 +426,35 @@ function copyCloneUrl(cloneUrl, repoName) {
         document.execCommand('copy');
         document.body.removeChild(textArea);
         alert('Clone URL copied to clipboard for: ' + repoName + '\n\nURL: ' + cloneUrl);
+    });
+}
+
+function trackAllRepositories(projectId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    fetch(`/projects/${projectId}/track-all`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'All repositories tracked successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to track all repositories', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to track all repositories', 'error');
     });
 }
 
@@ -395,6 +484,64 @@ function cloneAllRepositories(projectId) {
     .catch(error => {
         console.error('Error:', error);
         showToast('Failed to create clone jobs', 'error');
+    });
+}
+
+function fetchAllRepositories(projectId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    fetch(`/projects/${projectId}/fetch-all`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Fetch jobs created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to create fetch jobs', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to create fetch jobs', 'error');
+    });
+}
+
+function analyzeAllRepositories(projectId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    fetch(`/projects/${projectId}/analyze-all`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Analyze jobs created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else {
+            showToast(data.message || 'Failed to create analyze jobs', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to create analyze jobs', 'error');
     });
 }
 </script>

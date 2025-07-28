@@ -126,10 +126,8 @@ func (r *GithubPersonRepository) GetByProjectID(projectID string) ([]*models.Git
 		SELECT DISTINCT gp.id, gp.github_user_id, gp.username, gp.display_name, 
 		       gp.avatar_url, gp.profile_url, gp.type, gp.created_at, gp.updated_at
 		FROM github_people gp
-		INNER JOIN pull_requests p ON gp.github_user_id = json_extract(p.user, '$.id')
-		INNER JOIN github_repositories gr ON p.repository_id = gr.id
-		INNER JOIN project_repositories pr2 ON gr.id = pr2.github_repo_id
-		WHERE pr2.project_id = ?
+		INNER JOIN project_github_people pgp ON gp.id = pgp.github_person_id
+		WHERE pgp.project_id = ?
 		ORDER BY gp.username ASC
 	`
 

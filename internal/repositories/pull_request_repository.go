@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/google/uuid"
@@ -139,4 +140,28 @@ func (r *PullRequestRepository) Upsert(pr *models.PullRequest) error {
 	}
 
 	return r.Create(pr)
+}
+
+// GetEarliestOpenPRDateByRepositoryID gets the earliest open PR date for a repository
+func (r *PullRequestRepository) GetEarliestOpenPRDateByRepositoryID(repositoryID string) (time.Time, error) {
+	query := `SELECT MIN(github_created_at) FROM pull_requests WHERE repository_id = ? AND state = 'open'`
+
+	var earliestDateStr sql.NullString
+	err := r.db.QueryRow(query, repositoryID).Scan(&earliestDateStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// If no open PRs found, return zero time
+	if !earliestDateStr.Valid {
+		return time.Time{}, nil
+	}
+
+	// Parse the date string
+	earliestDate, err := time.Parse("2006-01-02 15:04:05-07:00", earliestDateStr.String)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return earliestDate, nil
 }

@@ -7,20 +7,28 @@ import (
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/alimgiray/gscope/internal/repositories"
+	"github.com/alimgiray/gscope/internal/services"
 )
 
 // StatsWorker handles stats jobs
 type StatsWorker struct {
 	*BaseWorker
 	jobRepo               *repositories.JobRepository
+	peopleStatsService    *services.PeopleStatisticsService
 	projectRepositoryRepo *repositories.ProjectRepositoryRepository
 }
 
 // NewStatsWorker creates a new stats worker
-func NewStatsWorker(workerID string, jobRepo *repositories.JobRepository, projectRepositoryRepo *repositories.ProjectRepositoryRepository) *StatsWorker {
+func NewStatsWorker(
+	workerID string,
+	jobRepo *repositories.JobRepository,
+	peopleStatsService *services.PeopleStatisticsService,
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
+) *StatsWorker {
 	return &StatsWorker{
 		BaseWorker:            NewBaseWorker(workerID, models.JobTypeStats),
 		jobRepo:               jobRepo,
+		peopleStatsService:    peopleStatsService,
 		projectRepositoryRepo: projectRepositoryRepo,
 	}
 }
@@ -70,9 +78,16 @@ func (w *StatsWorker) processStatsJob(ctx context.Context, job *models.Job) {
 		return
 	}
 
-	// TODO: Implement actual stats generation logic here
-	// For now, just simulate work
-	time.Sleep(2 * time.Second)
+	// Process the stats job
+	if err := w.ProcessJob(ctx, job); err != nil {
+		log.Printf("Stats worker %s error processing job %s: %v", w.WorkerID, job.ID, err)
+		job.SetError(err.Error())
+		job.MarkFailed()
+		if err := w.jobRepo.Update(job); err != nil {
+			log.Printf("Stats worker %s error marking job %s as failed: %v", w.WorkerID, job.ID, err)
+		}
+		return
+	}
 
 	// Mark job as completed
 	job.MarkCompleted()
@@ -81,13 +96,59 @@ func (w *StatsWorker) processStatsJob(ctx context.Context, job *models.Job) {
 		return
 	}
 
-	// Update the last_analyzed field in project_repositories
-	if job.ProjectRepositoryID != nil {
-		now := time.Now()
-		if err := w.projectRepositoryRepo.UpdateLastAnalyzed(*job.ProjectRepositoryID, &now); err != nil {
-			log.Printf("Stats worker %s error updating last_analyzed for project repository %s: %v", w.WorkerID, *job.ProjectRepositoryID, err)
-		}
-	}
-
 	log.Printf("Stats worker %s completed job %s", w.WorkerID, job.ID)
+}
+
+// ProcessJob processes a stats job
+func (w *StatsWorker) ProcessJob(ctx context.Context, job *models.Job) error {
+	log.Printf("Processing stats job for project: %s", job.ProjectID)
+
+	// Check if this is a repository-specific job
+	if job.ProjectRepositoryID != nil {
+		// Process only the specific repository
+		projectRepo, err := w.projectRepositoryRepo.GetByID(*job.ProjectRepositoryID)
+		if err != nil {
+			return err
+		}
+
+		if !projectRepo.IsTracked {
+			return nil // Skip untracked repositories
+		}
+
+		log.Printf("Calculating statistics for repository: %s", projectRepo.ID)
+		err = w.peopleStatsService.CalculateStatisticsForRepository(job.ProjectID, projectRepo.ID, projectRepo.GithubRepoID)
+		if err != nil {
+			return err
+		}
+
+		// Mark repository as analyzed after successful stats calculation
+		now := time.Now()
+		return w.projectRepositoryRepo.UpdateLastAnalyzed(projectRepo.ID, &now)
+	} else {
+		// Process all tracked repositories in the project
+		projectRepos, err := w.projectRepositoryRepo.GetByProjectID(job.ProjectID)
+		if err != nil {
+			return err
+		}
+
+		for _, projectRepo := range projectRepos {
+			if !projectRepo.IsTracked {
+				continue
+			}
+
+			log.Printf("Calculating statistics for repository: %s", projectRepo.ID)
+			if err := w.peopleStatsService.CalculateStatisticsForRepository(job.ProjectID, projectRepo.ID, projectRepo.GithubRepoID); err != nil {
+				log.Printf("Error calculating statistics for repository %s: %v", projectRepo.ID, err)
+				continue
+			}
+
+			// Mark repository as analyzed after successful stats calculation
+			now := time.Now()
+			if err := w.projectRepositoryRepo.UpdateLastAnalyzed(projectRepo.ID, &now); err != nil {
+				log.Printf("Error updating analysis status for repository %s: %v", projectRepo.ID, err)
+			}
+		}
+
+		return nil
+	}
 }

@@ -283,15 +283,41 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			}
 		}
 
+		// Check if "fetch github" has been called (has completed pull_request jobs)
+		hasCompletedPullRequestJobs := false
+		for _, job := range repoJobs {
+			if job.JobType == models.JobTypePullRequest && job.Status == models.JobStatusCompleted {
+				hasCompletedPullRequestJobs = true
+				break
+			}
+		}
+
+		// Check if repository has been cloned
+		isRepositoryCloned := githubRepo.IsCloned
+
+		// Check if there are GitHub people with email associations for this project
+		hasGitHubPeopleWithEmails := false
+		_, err = h.githubPersonRepo.GetByProjectID(projectID)
+		if err == nil {
+			// Get email associations for this project
+			emailAssociations, err := h.githubPersonEmailService.GetGitHubPersonEmailsByProjectID(projectID)
+			if err == nil && len(emailAssociations) > 0 {
+				hasGitHubPeopleWithEmails = true
+			}
+		}
+
 		repositories = append(repositories, map[string]interface{}{
-			"ProjectRepo":            projectRepo,
-			"GitHubRepo":             githubRepo,
-			"HasActiveCloneJobs":     hasActiveCloneJobs,
-			"LatestCloneJobFailed":   latestCloneJobFailed,
-			"LatestCloneJobError":    latestCloneJobError,
-			"HasActiveAnalyzeJobs":   hasActiveAnalyzeJobs,
-			"LatestAnalyzeJobFailed": latestAnalyzeJobFailed,
-			"LatestAnalyzeJobError":  latestAnalyzeJobError,
+			"ProjectRepo":                 projectRepo,
+			"GitHubRepo":                  githubRepo,
+			"HasActiveCloneJobs":          hasActiveCloneJobs,
+			"LatestCloneJobFailed":        latestCloneJobFailed,
+			"LatestCloneJobError":         latestCloneJobError,
+			"HasActiveAnalyzeJobs":        hasActiveAnalyzeJobs,
+			"LatestAnalyzeJobFailed":      latestAnalyzeJobFailed,
+			"LatestAnalyzeJobError":       latestAnalyzeJobError,
+			"HasCompletedPullRequestJobs": hasCompletedPullRequestJobs,
+			"IsRepositoryCloned":          isRepositoryCloned,
+			"HasGitHubPeopleWithEmails":   hasGitHubPeopleWithEmails,
 		})
 	}
 
@@ -849,7 +875,88 @@ func (h *ProjectHandler) CreateCloneJob(c *gin.Context) {
 	})
 }
 
-// CreateAnalyzeJobs creates analysis jobs for a project
+// CreateFetchGithubJob creates only a pull request job for a specific repository
+func (h *ProjectHandler) CreateFetchGithubJob(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	projectRepositoryID := c.Param("repository_id")
+
+	// Validate project ID
+	if _, err := uuid.Parse(projectID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid project ID",
+		})
+		return
+	}
+
+	// Validate project repository ID
+	if projectRepositoryID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project repository ID is required",
+		})
+		return
+	}
+
+	if _, err := uuid.Parse(projectRepositoryID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid project repository ID",
+		})
+		return
+	}
+
+	// Check if user owns the project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	if project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Create only the pull_request job
+	err = h.jobService.CreatePullRequestJob(projectID, projectRepositoryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create pull request job: " + err.Error(),
+		})
+		return
+	}
+
+	// Return success response
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Pull request job created successfully",
+	})
+}
+
+// CreateAnalyzeJobs creates only a stats job for a specific repository
 func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 	session := middleware.GetSession(c)
 	if session == nil {
@@ -907,7 +1014,7 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 		return
 	}
 
-	// Create the pull_request and stats jobs
+	// Create only the stats job
 	if projectRepositoryID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -916,11 +1023,29 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 		return
 	}
 
-	err = h.jobService.CreatePullRequestAndStatsJobs(projectID, projectRepositoryID)
+	// Check if there are GitHub people with email associations for this project
+	emailAssociations, err := h.githubPersonEmailService.GetGitHubPersonEmailsByProjectID(projectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "Failed to create pull request and stats jobs: " + err.Error(),
+			"message": "Failed to check GitHub people associations: " + err.Error(),
+		})
+		return
+	}
+
+	if len(emailAssociations) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "You need at least 1 GitHub account with an email associated to run analyze",
+		})
+		return
+	}
+
+	err = h.jobService.CreateStatsJob(projectID, projectRepositoryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create stats job: " + err.Error(),
 		})
 		return
 	}
@@ -928,7 +1053,7 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 	// Return success response
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Pull request and stats jobs created successfully",
+		"message": "Stats job created successfully",
 	})
 }
 
@@ -1007,6 +1132,90 @@ func (h *ProjectHandler) CloneAllRepositories(c *gin.Context) {
 	message := fmt.Sprintf("Created %d clone and commit job pairs for tracked repositories", createdCount)
 	if createdCount == 0 {
 		message = "No jobs created (no tracked repositories)"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": message,
+	})
+}
+
+// TrackAllRepositories tracks all repositories in a project
+func (h *ProjectHandler) TrackAllRepositories(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Validate project ID
+	if _, err := uuid.Parse(projectID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid project ID",
+		})
+		return
+	}
+
+	// Check if user owns the project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	if project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Get all project repositories for this project
+	projectRepos, err := h.githubRepoService.GetProjectRepositories(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get project repositories: " + err.Error(),
+		})
+		return
+	}
+
+	trackedCount := 0
+	for _, projectRepo := range projectRepos {
+		// Skip if already tracked
+		if projectRepo.IsTracked {
+			continue
+		}
+
+		// Track this repository
+		projectRepo.IsTracked = true
+		if err := h.githubRepoService.UpdateProjectRepository(projectRepo); err != nil {
+			continue // Skip if we can't track the repository
+		}
+
+		trackedCount++
+	}
+
+	// Return success response
+	message := fmt.Sprintf("Tracked %d repositories", trackedCount)
+	if trackedCount == 0 {
+		message = "No repositories to track (all repositories are already tracked)"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1508,5 +1717,169 @@ func (h *ProjectHandler) DeleteGitHubPersonEmailAssociation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Email association removed successfully",
+	})
+}
+
+// FetchAllRepositories creates pull_request jobs for all tracked repositories in a project
+func (h *ProjectHandler) FetchAllRepositories(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID is required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Get all tracked repositories for this project
+	repositories, err := h.githubRepoService.GetProjectRepositories(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Error retrieving repositories: " + err.Error(),
+		})
+		return
+	}
+
+	// Filter to only tracked repositories
+	var trackedRepos []*models.ProjectRepository
+	for _, repo := range repositories {
+		if repo.IsTracked {
+			trackedRepos = append(trackedRepos, repo)
+		}
+	}
+
+	if len(trackedRepos) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "No tracked repositories found",
+		})
+		return
+	}
+
+	// Create pull_request jobs for all tracked repositories
+	createdJobs := 0
+	for _, repo := range trackedRepos {
+		err := h.jobService.CreatePullRequestJob(projectID, repo.ID)
+		if err != nil {
+			// Continue with other repos even if one fails
+			continue
+		}
+		createdJobs++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Created %d fetch jobs for tracked repositories", createdJobs),
+	})
+}
+
+// AnalyzeAllRepositories creates stats jobs for all tracked repositories in a project
+func (h *ProjectHandler) AnalyzeAllRepositories(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID is required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Get all tracked repositories for this project
+	repositories, err := h.githubRepoService.GetProjectRepositories(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Error retrieving repositories: " + err.Error(),
+		})
+		return
+	}
+
+	// Filter to only tracked repositories
+	var trackedRepos []*models.ProjectRepository
+	for _, repo := range repositories {
+		if repo.IsTracked {
+			trackedRepos = append(trackedRepos, repo)
+		}
+	}
+
+	if len(trackedRepos) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "No tracked repositories found",
+		})
+		return
+	}
+
+	// Create stats jobs for all tracked repositories
+	createdJobs := 0
+	for _, repo := range trackedRepos {
+		err := h.jobService.CreateStatsJob(projectID, repo.ID)
+		if err != nil {
+			// Continue with other repos even if one fails
+			continue
+		}
+		createdJobs++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Created %d analyze jobs for tracked repositories", createdJobs),
 	})
 }

@@ -133,9 +133,27 @@ func (w *CommitWorker) processCommitJobLogic(job *models.Job) error {
 func (w *CommitWorker) analyzeRepositoryCommits(githubRepo *models.GitHubRepository) error {
 	repoPath := *githubRepo.LocalPath
 
-	// Get all commits using git log with more detailed format
-	// Using %aN for author name (respects .mailmap) and %aE for author email
-	cmd := exec.Command("git", "log", "--pretty=format:%H|%aN|%aE|%ad|%s", "--date=iso", "--numstat")
+	// Get the latest commit date from the database for this repository
+	latestCommitDate, err := w.commitRepo.GetLatestCommitDateByRepositoryID(githubRepo.ID)
+	if err != nil {
+		log.Printf("Warning: failed to get latest commit date for repository %s: %v", githubRepo.ID, err)
+		// If we can't get the latest date, process all commits
+		latestCommitDate = time.Time{}
+	}
+
+	// Build git log command with date filter if we have a latest commit date
+	var cmd *exec.Cmd
+	if !latestCommitDate.IsZero() {
+		// Only get commits after the latest commit date
+		dateFilter := latestCommitDate.Format("2006-01-02 15:04:05")
+		cmd = exec.Command("git", "log", "--pretty=format:%H|%aN|%aE|%ad|%s", "--date=iso", "--numstat", "--since="+dateFilter)
+		log.Printf("Processing commits after %s for repository %s", dateFilter, githubRepo.ID)
+	} else {
+		// Get all commits if no previous commits exist
+		cmd = exec.Command("git", "log", "--pretty=format:%H|%aN|%aE|%ad|%s", "--date=iso", "--numstat")
+		log.Printf("Processing all commits for repository %s (no previous commits found)", githubRepo.ID)
+	}
+
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {

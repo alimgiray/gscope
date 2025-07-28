@@ -70,3 +70,29 @@ func (s *JobService) GetProjectJobs(projectID string) ([]*models.Job, error) {
 func (s *JobService) GetProjectRepositoryJobs(projectRepositoryID string) ([]*models.Job, error) {
 	return s.jobRepo.GetByProjectRepositoryID(projectRepositoryID)
 }
+
+// CreatePullRequestJob creates only a pull_request job
+func (s *JobService) CreatePullRequestJob(projectID string, projectRepositoryID string) error {
+	// Create pull_request job
+	pullRequestJob := models.NewJob(projectID, models.JobTypePullRequest)
+	pullRequestJob.ProjectRepositoryID = &projectRepositoryID
+
+	if err := s.jobRepo.Create(pullRequestJob); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CreateStatsJob creates only a stats job
+func (s *JobService) CreateStatsJob(projectID string, projectRepositoryID string) error {
+	// Create stats job
+	statsJob := models.NewJob(projectID, models.JobTypeStats)
+	statsJob.ProjectRepositoryID = &projectRepositoryID
+
+	if err := s.jobRepo.Create(statsJob); err != nil {
+		return err
+	}
+
+	return nil
+}

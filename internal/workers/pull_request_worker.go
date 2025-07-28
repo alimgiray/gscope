@@ -17,15 +17,17 @@ import (
 
 type PullRequestWorker struct {
 	*BaseWorker
-	githubClient          *github.Client
-	jobRepo               *repositories.JobRepository
-	pullRequestService    *services.PullRequestService
-	prReviewService       *services.PRReviewService
-	githubPersonService   *services.GithubPersonService
-	githubRepoService     *services.GitHubRepositoryService
-	projectRepositoryRepo *repositories.ProjectRepositoryRepository
-	projectRepo           *repositories.ProjectRepository
-	userRepo              *repositories.UserRepository
+	githubClient               *github.Client
+	jobRepo                    *repositories.JobRepository
+	pullRequestService         *services.PullRequestService
+	prReviewService            *services.PRReviewService
+	githubPersonService        *services.GithubPersonService
+	githubRepoService          *services.GitHubRepositoryService
+	projectRepositoryRepo      *repositories.ProjectRepositoryRepository
+	projectRepo                *repositories.ProjectRepository
+	userRepo                   *repositories.UserRepository
+	projectGithubPersonService *services.ProjectGithubPersonService
+	pullRequestRepo            *repositories.PullRequestRepository
 }
 
 func NewPullRequestWorker(
@@ -39,18 +41,22 @@ func NewPullRequestWorker(
 	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
 	projectRepo *repositories.ProjectRepository,
 	userRepo *repositories.UserRepository,
+	projectGithubPersonService *services.ProjectGithubPersonService,
+	pullRequestRepo *repositories.PullRequestRepository,
 ) *PullRequestWorker {
 	return &PullRequestWorker{
-		BaseWorker:            NewBaseWorker(workerID, models.JobTypePullRequest),
-		githubClient:          githubClient,
-		jobRepo:               jobRepo,
-		pullRequestService:    pullRequestService,
-		prReviewService:       prReviewService,
-		githubPersonService:   githubPersonService,
-		githubRepoService:     githubRepoService,
-		projectRepositoryRepo: projectRepositoryRepo,
-		projectRepo:           projectRepo,
-		userRepo:              userRepo,
+		BaseWorker:                 NewBaseWorker(workerID, models.JobTypePullRequest),
+		githubClient:               githubClient,
+		jobRepo:                    jobRepo,
+		pullRequestService:         pullRequestService,
+		prReviewService:            prReviewService,
+		githubPersonService:        githubPersonService,
+		githubRepoService:          githubRepoService,
+		projectRepositoryRepo:      projectRepositoryRepo,
+		projectRepo:                projectRepo,
+		userRepo:                   userRepo,
+		projectGithubPersonService: projectGithubPersonService,
+		pullRequestRepo:            pullRequestRepo,
 	}
 }
 
@@ -167,14 +173,14 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 		log.Printf("Processing pull requests for %s/%s", owner, repoName)
 
 		// Fetch pull requests from GitHub
-		pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName)
+		pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName, githubRepo.ID)
 		if err != nil {
 			return fmt.Errorf("failed to fetch pull requests for %s/%s: %s", owner, repoName, err)
 		}
 
 		// Process each pull request
 		for _, pr := range pullRequests {
-			if err := w.processPullRequest(ctx, userGithubClient, owner, repoName, pr, githubRepo.ID); err != nil {
+			if err := w.processPullRequest(ctx, userGithubClient, owner, repoName, pr, githubRepo.ID, job.ProjectID); err != nil {
 				log.Printf("Failed to process pull request #%d: %s", pr.GetNumber(), err)
 				continue
 			}
@@ -188,11 +194,25 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 			}
 
 			for _, review := range reviews {
-				if err := w.processPullRequestReview(ctx, review, githubRepo.ID, pr.GetID(), userGithubClient); err != nil {
+				if err := w.processPullRequestReview(ctx, review, githubRepo.ID, pr.GetID(), userGithubClient, job.ProjectID); err != nil {
 					log.Printf("Failed to process review %d: %s", review.GetID(), err)
 					continue
 				}
 				totalReviews++
+			}
+		}
+
+		// Fetch and process repository contributors (even if no PRs exist)
+		contributors, err := w.fetchRepositoryContributors(ctx, userGithubClient, owner, repoName)
+		if err != nil {
+			log.Printf("Failed to fetch contributors for %s/%s: %s", owner, repoName, err)
+		} else {
+			for _, contributor := range contributors {
+				if err := w.processGithubPerson(contributor, userGithubClient, job.ProjectID, "contributor"); err != nil {
+					log.Printf("Failed to process contributor %s: %s", contributor.GetLogin(), err)
+					continue
+				}
+				totalPeople++
 			}
 		}
 	} else {
@@ -225,7 +245,7 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 			log.Printf("Processing pull requests for %s/%s", owner, repoName)
 
 			// Fetch pull requests from GitHub
-			pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName)
+			pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName, githubRepo.ID)
 			if err != nil {
 				log.Printf("Failed to fetch pull requests for %s/%s: %s", owner, repoName, err)
 				continue
@@ -233,7 +253,7 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 
 			// Process each pull request
 			for _, pr := range pullRequests {
-				if err := w.processPullRequest(ctx, userGithubClient, owner, repoName, pr, githubRepo.ID); err != nil {
+				if err := w.processPullRequest(ctx, userGithubClient, owner, repoName, pr, githubRepo.ID, job.ProjectID); err != nil {
 					log.Printf("Failed to process pull request #%d: %s", pr.GetNumber(), err)
 					continue
 				}
@@ -247,7 +267,7 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 				}
 
 				for _, review := range reviews {
-					if err := w.processPullRequestReview(ctx, review, githubRepo.ID, pr.GetID(), userGithubClient); err != nil {
+					if err := w.processPullRequestReview(ctx, review, githubRepo.ID, pr.GetID(), userGithubClient, job.ProjectID); err != nil {
 						log.Printf("Failed to process review %d: %s", review.GetID(), err)
 						continue
 					}
@@ -269,7 +289,15 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 	return nil
 }
 
-func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *github.Client, owner, repo string) ([]*github.PullRequest, error) {
+func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *github.Client, owner, repo string, repositoryID string) ([]*github.PullRequest, error) {
+	// Get the earliest open PR date from the database for this repository
+	earliestOpenPRDate, err := w.pullRequestRepo.GetEarliestOpenPRDateByRepositoryID(repositoryID)
+	if err != nil {
+		log.Printf("Warning: failed to get earliest open PR date for repository %s: %v", repositoryID, err)
+		// If we can't get the earliest date, process all PRs
+		earliestOpenPRDate = time.Time{}
+	}
+
 	var allPRs []*github.PullRequest
 	opts := &github.PullRequestListOptions{
 		State: "all", // Get both open and closed PRs
@@ -278,12 +306,28 @@ func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *githu
 		},
 	}
 
+	if !earliestOpenPRDate.IsZero() {
+		log.Printf("Processing PRs after %s for repository %s", earliestOpenPRDate.Format("2006-01-02 15:04:05"), repositoryID)
+	} else {
+		log.Printf("Processing all PRs for repository %s (no previous open PRs found)", repositoryID)
+	}
+
 	for {
 		prs, resp, err := client.PullRequests.List(ctx, owner, repo, opts)
 		if err != nil {
 			return nil, err
 		}
-		allPRs = append(allPRs, prs...)
+
+		// Filter PRs by date if we have an earliest date
+		if !earliestOpenPRDate.IsZero() {
+			for _, pr := range prs {
+				if pr.GetCreatedAt().After(earliestOpenPRDate) {
+					allPRs = append(allPRs, pr)
+				}
+			}
+		} else {
+			allPRs = append(allPRs, prs...)
+		}
 
 		if resp.NextPage == 0 {
 			break
@@ -316,10 +360,44 @@ func (w *PullRequestWorker) fetchPullRequestReviews(ctx context.Context, client 
 	return allReviews, nil
 }
 
-func (w *PullRequestWorker) processPullRequest(ctx context.Context, client *github.Client, owner, repo string, githubPR *github.PullRequest, repositoryID string) error {
+// fetchRepositoryContributors fetches contributors for a repository
+func (w *PullRequestWorker) fetchRepositoryContributors(ctx context.Context, client *github.Client, owner, repo string) ([]*github.User, error) {
+	var allContributors []*github.User
+	opts := &github.ListContributorsOptions{
+		ListOptions: github.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	for {
+		contributors, resp, err := client.Repositories.ListContributors(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert contributors to users by fetching full user details
+		for _, contributor := range contributors {
+			user, _, err := client.Users.Get(ctx, contributor.GetLogin())
+			if err != nil {
+				log.Printf("Failed to fetch user details for %s: %s", contributor.GetLogin(), err)
+				continue
+			}
+			allContributors = append(allContributors, user)
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allContributors, nil
+}
+
+func (w *PullRequestWorker) processPullRequest(ctx context.Context, client *github.Client, owner, repo string, githubPR *github.PullRequest, repositoryID string, projectID string) error {
 	// Process the PR author
 	if githubPR.User != nil {
-		if err := w.processGithubPerson(githubPR.User, client); err != nil {
+		if err := w.processGithubPerson(githubPR.User, client, projectID, "pull_request"); err != nil {
 			log.Printf("Failed to process PR author: %s", err)
 		}
 	}
@@ -389,10 +467,10 @@ func (w *PullRequestWorker) processPullRequest(ctx context.Context, client *gith
 	return w.pullRequestService.UpsertPullRequest(pr)
 }
 
-func (w *PullRequestWorker) processPullRequestReview(ctx context.Context, githubReview *github.PullRequestReview, repositoryID string, pullRequestID int64, client *github.Client) error {
+func (w *PullRequestWorker) processPullRequestReview(ctx context.Context, githubReview *github.PullRequestReview, repositoryID string, pullRequestID int64, client *github.Client, projectID string) error {
 	// Process the reviewer
 	if githubReview.User != nil {
-		if err := w.processGithubPerson(githubReview.User, client); err != nil {
+		if err := w.processGithubPerson(githubReview.User, client, projectID, "pull_request"); err != nil {
 			log.Printf("Failed to process review author: %s", err)
 		}
 	}
@@ -432,7 +510,7 @@ func (w *PullRequestWorker) processPullRequestReview(ctx context.Context, github
 	return w.prReviewService.UpsertPRReview(review)
 }
 
-func (w *PullRequestWorker) processGithubPerson(githubUser *github.User, client *github.Client) error {
+func (w *PullRequestWorker) processGithubPerson(githubUser *github.User, client *github.Client, projectID, sourceType string) error {
 	person := &models.GithubPerson{
 		GithubUserID: int(githubUser.GetID()),
 		Username:     githubUser.GetLogin(),
@@ -463,7 +541,12 @@ func (w *PullRequestWorker) processGithubPerson(githubUser *github.User, client 
 	}
 
 	// Upsert the person
-	return w.githubPersonService.UpsertGithubPerson(person)
+	if err := w.githubPersonService.UpsertGithubPerson(person); err != nil {
+		return err
+	}
+
+	// Create project-github person relationship
+	return w.projectGithubPersonService.CreateProjectGithubPerson(projectID, person.ID, sourceType)
 }
 
 // fetchFullUserDetails fetches complete user details from GitHub API
