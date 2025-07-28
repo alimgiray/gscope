@@ -34,8 +34,12 @@
         <button class="btn" style="background: #3b82f6; color: white;" onclick="analyzeAllRepositories('{{.Project.ID}}')">
             Analyze All
         </button>
+        <button class="btn" style="background: #8b5cf6; color: white;" onclick="updateAllRepositories('{{.Project.ID}}')">
+            Update All
+        </button>
         <a href="/projects/{{.Project.ID}}/emails" class="btn" style="background: #dc2626; color: white;">Emails</a>
         <a href="/projects/{{.Project.ID}}/people" class="btn" style="background: #2563eb; color: white;">People</a>
+        <a href="/projects/{{.Project.ID}}/reports" class="btn" style="background: #059669; color: white;">Reports</a>
     </div>
 </div>
 
@@ -542,6 +546,42 @@ function analyzeAllRepositories(projectId) {
     .catch(error => {
         console.error('Error:', error);
         showToast('Failed to create analyze jobs', 'error');
+    });
+}
+
+function updateAllRepositories(projectId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    fetch(`/projects/${projectId}/update-all`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => {
+        if (response.redirected) {
+            // If the response is a redirect, follow it
+            window.location.href = response.url;
+        } else {
+            return response.json();
+        }
+    })
+    .then(data => {
+        if (data && data.success) {
+            showToast(data.message || 'Update jobs created successfully', 'success');
+            // Refresh the page after a short delay to show updated status
+            setTimeout(() => {
+                saveScrollPosition();
+                window.location.reload();
+            }, 100);
+        } else if (data) {
+            showToast(data.message || 'Failed to create update jobs', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to create update jobs', 'error');
     });
 }
 </script>

@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"sync"
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/google/uuid"
@@ -9,6 +10,7 @@ import (
 
 type PRReviewRepository struct {
 	db *sql.DB
+	mu sync.RWMutex
 }
 
 func NewPRReviewRepository(db *sql.DB) *PRReviewRepository {
@@ -16,6 +18,9 @@ func NewPRReviewRepository(db *sql.DB) *PRReviewRepository {
 }
 
 func (r *PRReviewRepository) Create(review *models.PRReview) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	review.ID = uuid.New().String()
 
 	query := `
@@ -96,6 +101,33 @@ func (r *PRReviewRepository) GetByGithubReviewID(githubReviewID int) (*models.PR
 	}
 
 	return &review, nil
+}
+
+func (r *PRReviewRepository) GetByRepositoryID(repositoryID string) ([]*models.PRReview, error) {
+	query := `SELECT * FROM pr_reviews WHERE repository_id = ? ORDER BY github_created_at DESC`
+
+	rows, err := r.db.Query(query, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reviews []*models.PRReview
+	for rows.Next() {
+		var review models.PRReview
+		err := rows.Scan(
+			&review.ID, &review.RepositoryID, &review.PullRequestID, &review.GithubReviewID, &review.ReviewerID,
+			&review.ReviewerLogin, &review.Body, &review.State, &review.AuthorAssociation, &review.SubmittedAt, &review.CommitID,
+			&review.HTMLURL, &review.GithubCreatedAt, &review.GithubUpdatedAt,
+			&review.CreatedAt, &review.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		reviews = append(reviews, &review)
+	}
+
+	return reviews, nil
 }
 
 func (r *PRReviewRepository) Update(review *models.PRReview) error {

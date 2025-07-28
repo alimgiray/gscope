@@ -1,6 +1,9 @@
 package services
 
 import (
+	"encoding/json"
+	"fmt"
+	"sort"
 	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
@@ -19,6 +22,7 @@ type PeopleStatisticsService struct {
 	personRepo            *repositories.PersonRepository
 	scoreSettingsRepo     *repositories.ScoreSettingsRepository
 	excludedExtRepo       *repositories.ExcludedExtensionRepository
+	excludedFolderRepo    *repositories.ExcludedFolderRepository
 }
 
 func NewPeopleStatisticsService(
@@ -33,6 +37,7 @@ func NewPeopleStatisticsService(
 	personRepo *repositories.PersonRepository,
 	scoreSettingsRepo *repositories.ScoreSettingsRepository,
 	excludedExtRepo *repositories.ExcludedExtensionRepository,
+	excludedFolderRepo *repositories.ExcludedFolderRepository,
 ) *PeopleStatisticsService {
 	return &PeopleStatisticsService{
 		peopleStatsRepo:       peopleStatsRepo,
@@ -46,6 +51,7 @@ func NewPeopleStatisticsService(
 		personRepo:            personRepo,
 		scoreSettingsRepo:     scoreSettingsRepo,
 		excludedExtRepo:       excludedExtRepo,
+		excludedFolderRepo:    excludedFolderRepo,
 	}
 }
 
@@ -59,6 +65,12 @@ func (s *PeopleStatisticsService) CalculateStatisticsForRepository(projectID, pr
 
 	// Get excluded extensions for the project
 	excludedExtensions, err := s.excludedExtRepo.GetByProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
+	// Get excluded folders for the project
+	excludedFolders, err := s.excludedFolderRepo.GetByProjectID(projectID)
 	if err != nil {
 		return err
 	}
@@ -105,7 +117,7 @@ func (s *PeopleStatisticsService) CalculateStatisticsForRepository(projectID, pr
 
 	// Calculate statistics for each day from beginning to end
 	for date := startDate; !date.After(endDate); date = date.AddDate(0, 0, 1) {
-		if err := s.calculateDailyStatistics(projectID, projectRepositoryID, githubRepositoryID, date, scoreSettings, excludedExtensions, emailMerges, personEmailMap); err != nil {
+		if err := s.calculateDailyStatistics(projectID, projectRepositoryID, githubRepositoryID, date, scoreSettings, excludedExtensions, excludedFolders, emailMerges, personEmailMap); err != nil {
 			return err
 		}
 	}
@@ -119,6 +131,7 @@ func (s *PeopleStatisticsService) calculateDailyStatistics(
 	date time.Time,
 	scoreSettings *models.ScoreSettings,
 	excludedExtensions []*models.ExcludedExtension,
+	excludedFolders []*models.ExcludedFolder,
 	emailMerges map[string]string,
 	personEmailMap map[string]string,
 ) error {
@@ -139,11 +152,11 @@ func (s *PeopleStatisticsService) calculateDailyStatistics(
 	for _, person := range githubPeople {
 		stats := s.calculatePersonDailyStats(
 			projectID, projectRepositoryID, githubRepositoryID, person.ID, date,
-			scoreSettings, excludedExtMap, emailMerges, personEmailMap,
+			scoreSettings, excludedExtMap, excludedFolders, emailMerges, personEmailMap,
 		)
 
-		if stats != nil && stats.Score > 0 {
-			// Only insert if score is greater than 0
+		if stats != nil && (stats.Score > 0 || stats.Commits > 0 || stats.PullRequests > 0 || stats.Comments > 0) {
+			// Insert if there's any activity (score > 0 or any commits/PRs/comments)
 			if err := s.peopleStatsRepo.Create(stats); err != nil {
 				return err
 			}
@@ -159,27 +172,32 @@ func (s *PeopleStatisticsService) calculatePersonDailyStats(
 	date time.Time,
 	scoreSettings *models.ScoreSettings,
 	excludedExtMap map[string]bool,
+	excludedFolders []*models.ExcludedFolder,
 	emailMerges map[string]string,
 	personEmailMap map[string]string,
 ) *models.PeopleStatistics {
 
 	// Get the person's associated email
 	personEmail := personEmailMap[githubPersonID]
-	if personEmail == "" {
-		// No email association, skip this person
-		return nil
+
+	// Initialize commit statistics
+	commits := 0
+	additions := 0
+	deletions := 0
+
+	// Only calculate commit statistics if the person has an email association
+	if personEmail != "" {
+		// Apply email merges
+		mergedEmail := s.getMergedEmail(personEmail, emailMerges)
+
+		// Calculate commit statistics
+		commits, additions, deletions = s.calculateCommitStats(githubRepositoryID, mergedEmail, date, excludedExtMap, excludedFolders)
 	}
 
-	// Apply email merges
-	mergedEmail := s.getMergedEmail(personEmail, emailMerges)
-
-	// Calculate commit statistics
-	commits, additions, deletions := s.calculateCommitStats(githubRepositoryID, mergedEmail, date, excludedExtMap)
-
-	// Calculate PR statistics
+	// Calculate PR statistics (always calculate, regardless of email association)
 	pullRequests := s.calculatePRStats(githubRepositoryID, githubPersonID, date)
 
-	// Calculate comment statistics
+	// Calculate comment statistics (always calculate, regardless of email association)
 	comments := s.calculateCommentStats(githubRepositoryID, githubPersonID, date)
 
 	// Create statistics record
@@ -205,7 +223,7 @@ func (s *PeopleStatisticsService) getMergedEmail(email string, emailMerges map[s
 }
 
 // calculateCommitStats calculates commit-related statistics for a person on a specific date
-func (s *PeopleStatisticsService) calculateCommitStats(repositoryID, email string, date time.Time, excludedExtMap map[string]bool) (int, int, int) {
+func (s *PeopleStatisticsService) calculateCommitStats(repositoryID, email string, date time.Time, excludedExtMap map[string]bool, excludedFolders []*models.ExcludedFolder) (int, int, int) {
 	// Get all commits for this repository
 	commits, err := s.commitRepo.GetByRepositoryID(repositoryID)
 	if err != nil {
@@ -239,9 +257,12 @@ func (s *PeopleStatisticsService) calculateCommitStats(repositoryID, email strin
 				for _, commitFile := range commitFiles {
 					// Check if this file has an excluded extension
 					if !s.isExcludedExtension(commitFile.Filename, excludedExtMap) {
-						hasNonExcludedFiles = true
-						commitAdditions += commitFile.Additions
-						commitDeletions += commitFile.Deletions
+						// Check if this file is in an excluded folder
+						if !s.isExcludedFolder(commitFile.Filename, excludedFolders) {
+							hasNonExcludedFiles = true
+							commitAdditions += commitFile.Additions
+							commitDeletions += commitFile.Deletions
+						}
 					}
 				}
 
@@ -266,6 +287,12 @@ func (s *PeopleStatisticsService) calculatePRStats(repositoryID, githubPersonID 
 		return 0
 	}
 
+	// Get the GitHub person to get their username
+	githubPerson, err := s.githubPersonRepo.GetByID(githubPersonID)
+	if err != nil {
+		return 0
+	}
+
 	count := 0
 	for _, pr := range pullRequests {
 		// Check if PR was created by this person on the specified date
@@ -274,10 +301,18 @@ func (s *PeopleStatisticsService) calculatePRStats(repositoryID, githubPersonID 
 			dateYear, dateMonth, dateDay := date.Date()
 
 			if prYear == dateYear && prMonth == dateMonth && prDay == dateDay {
-				// Check if the PR user matches the github person ID
-				// This would require parsing the user JSON field
-				// For now, we'll count all PRs on that date (simplified)
-				count++
+				// Parse the user JSON to get the login (username)
+				if pr.User != nil {
+					var userData map[string]interface{}
+					if err := json.Unmarshal([]byte(*pr.User), &userData); err == nil {
+						if login, ok := userData["login"].(string); ok {
+							// Check if the PR was created by this GitHub person
+							if login == githubPerson.Username {
+								count++
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -287,11 +322,35 @@ func (s *PeopleStatisticsService) calculatePRStats(repositoryID, githubPersonID 
 
 // calculateCommentStats calculates comment statistics for a person on a specific date
 func (s *PeopleStatisticsService) calculateCommentStats(repositoryID, githubPersonID string, date time.Time) int {
-	// For now, we'll return 0 since we need to implement a proper method to get reviews by repository
-	// This would require adding a GetByRepositoryID method to PRReviewRepository
-	// or using a different approach to get reviews for a specific repository
-	// TODO: Implement proper review statistics calculation
-	return 0
+	// Get the GitHub person to get their username
+	githubPerson, err := s.githubPersonRepo.GetByID(githubPersonID)
+	if err != nil {
+		return 0
+	}
+
+	// Get all PR reviews for this repository
+	reviews, err := s.prReviewRepo.GetByRepositoryID(repositoryID)
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+	for _, review := range reviews {
+		// Check if review was created by this person on the specified date
+		if review.GithubCreatedAt != nil {
+			reviewYear, reviewMonth, reviewDay := review.GithubCreatedAt.Date()
+			dateYear, dateMonth, dateDay := date.Date()
+
+			if reviewYear == dateYear && reviewMonth == dateMonth && reviewDay == dateDay {
+				// Check if the review was created by this GitHub person
+				if review.ReviewerLogin == githubPerson.Username {
+					count++
+				}
+			}
+		}
+	}
+
+	return count
 }
 
 // isExcludedExtension checks if a file has an excluded extension
@@ -301,6 +360,22 @@ func (s *PeopleStatisticsService) isExcludedExtension(filename string, excludedE
 		if filename[i] == '.' {
 			ext := filename[i+1:]
 			return excludedExtMap[ext]
+		}
+	}
+	return false
+}
+
+// isExcludedFolder checks if a file is in an excluded folder
+func (s *PeopleStatisticsService) isExcludedFolder(filePath string, excludedFolders []*models.ExcludedFolder) bool {
+	for _, folder := range excludedFolders {
+		// Check if file path contains the excluded folder path
+		folderPath := folder.FolderPath
+		if len(filePath) >= len(folderPath) &&
+			(filePath == folderPath ||
+				(len(filePath) > len(folderPath) && filePath[:len(folderPath)] == folderPath && filePath[len(folderPath)] == '/') ||
+				filePath[len(filePath)-len(folderPath):] == folderPath ||
+				(len(filePath) > len(folderPath)+1 && filePath[len(filePath)-len(folderPath)-1:] == "/"+folder.FolderPath)) {
+			return true
 		}
 	}
 	return false
@@ -334,4 +409,435 @@ func (s *PeopleStatisticsService) DeleteStatisticsByProject(projectID string) er
 // DeleteStatisticsByRepository deletes all statistics for a repository
 func (s *PeopleStatisticsService) DeleteStatisticsByRepository(repositoryID string) error {
 	return s.peopleStatsRepo.DeleteByRepositoryID(repositoryID)
+}
+
+// GetAllTimeStatisticsByProject retrieves aggregated statistics for all GitHub people in a project
+func (s *PeopleStatisticsService) GetAllTimeStatisticsByProject(projectID string) ([]*models.GitHubPersonStats, error) {
+	// Get all GitHub people for this project
+	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*models.GitHubPersonStats
+	for _, person := range people {
+		// Get all statistics for this person in this project
+		stats, err := s.peopleStatsRepo.GetByProjectAndPerson(projectID, person.ID)
+		if err != nil {
+			continue
+		}
+
+		// Aggregate the statistics
+		totalCommits := 0
+		totalAdditions := 0
+		totalDeletions := 0
+		totalComments := 0
+		totalPullRequests := 0
+		totalScore := 0
+
+		for _, stat := range stats {
+			totalCommits += stat.Commits
+			totalAdditions += stat.Additions
+			totalDeletions += stat.Deletions
+			totalComments += stat.Comments
+			totalPullRequests += stat.PullRequests
+			totalScore += stat.Score
+		}
+
+		// Create the aggregated stats
+		personStats := &models.GitHubPersonStats{
+			GitHubPerson:      person,
+			TotalCommits:      totalCommits,
+			TotalAdditions:    totalAdditions,
+			TotalDeletions:    totalDeletions,
+			TotalComments:     totalComments,
+			TotalPullRequests: totalPullRequests,
+			TotalScore:        totalScore,
+		}
+
+		results = append(results, personStats)
+	}
+
+	// Sort by total score (descending)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].TotalScore > results[j].TotalScore
+	})
+
+	return results, nil
+}
+
+// GetYearlyStatisticsByProject retrieves yearly statistics for a project
+func (s *PeopleStatisticsService) GetYearlyStatisticsByProject(projectID string, year int) ([]*models.GitHubPersonStats, error) {
+	// Get all GitHub people for this project
+	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*models.GitHubPersonStats
+	for _, person := range people {
+		// Get statistics for this person in this project for the specified year
+		stats, err := s.peopleStatsRepo.GetByProjectAndPersonAndYear(projectID, person.ID, year)
+		if err != nil {
+			continue
+		}
+
+		// Aggregate the statistics
+		totalCommits := 0
+		totalAdditions := 0
+		totalDeletions := 0
+		totalComments := 0
+		totalPullRequests := 0
+		totalScore := 0
+
+		for _, stat := range stats {
+			totalCommits += stat.Commits
+			totalAdditions += stat.Additions
+			totalDeletions += stat.Deletions
+			totalComments += stat.Comments
+			totalPullRequests += stat.PullRequests
+			totalScore += stat.Score
+		}
+
+		// Create the aggregated stats
+		personStats := &models.GitHubPersonStats{
+			GitHubPerson:      person,
+			TotalCommits:      totalCommits,
+			TotalAdditions:    totalAdditions,
+			TotalDeletions:    totalDeletions,
+			TotalComments:     totalComments,
+			TotalPullRequests: totalPullRequests,
+			TotalScore:        totalScore,
+		}
+
+		results = append(results, personStats)
+	}
+
+	// Sort by total score (descending)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].TotalScore > results[j].TotalScore
+	})
+
+	return results, nil
+}
+
+// GetAvailableYearsForProject retrieves all available years for a project
+func (s *PeopleStatisticsService) GetAvailableYearsForProject(projectID string) ([]int, error) {
+	// Get the earliest and latest commit dates for this project from commits table
+	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	if earliestDate.IsZero() || latestDate.IsZero() {
+		// If no commits exist, return current year only
+		currentYear := time.Now().Year()
+		return []int{currentYear}, nil
+	}
+
+	// Generate years from earliest to latest
+	var years []int
+	startYear := earliestDate.Year()
+	endYear := latestDate.Year()
+
+	// If no data, default to current year
+	if startYear == 0 || endYear == 0 {
+		currentYear := time.Now().Year()
+		return []int{currentYear}, nil
+	}
+
+	// Generate years in descending order (newest first)
+	for year := endYear; year >= startYear; year-- {
+		years = append(years, year)
+	}
+
+	return years, nil
+}
+
+// GetMonthlyStatisticsByProject retrieves monthly statistics for a project
+func (s *PeopleStatisticsService) GetMonthlyStatisticsByProject(projectID string, year int, month int) ([]*models.GitHubPersonStats, error) {
+	// Get all GitHub people for this project
+	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*models.GitHubPersonStats
+	for _, person := range people {
+		// Get statistics for this person in this project for the specified month
+		stats, err := s.peopleStatsRepo.GetByProjectAndPersonAndMonth(projectID, person.ID, year, month)
+		if err != nil {
+			continue
+		}
+
+		// Aggregate the statistics
+		totalCommits := 0
+		totalAdditions := 0
+		totalDeletions := 0
+		totalComments := 0
+		totalPullRequests := 0
+		totalScore := 0
+
+		for _, stat := range stats {
+			totalCommits += stat.Commits
+			totalAdditions += stat.Additions
+			totalDeletions += stat.Deletions
+			totalComments += stat.Comments
+			totalPullRequests += stat.PullRequests
+			totalScore += stat.Score
+		}
+
+		// Create the aggregated stats
+		personStats := &models.GitHubPersonStats{
+			GitHubPerson:      person,
+			TotalCommits:      totalCommits,
+			TotalAdditions:    totalAdditions,
+			TotalDeletions:    totalDeletions,
+			TotalComments:     totalComments,
+			TotalPullRequests: totalPullRequests,
+			TotalScore:        totalScore,
+		}
+
+		results = append(results, personStats)
+	}
+
+	// Sort by total score (descending)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].TotalScore > results[j].TotalScore
+	})
+
+	return results, nil
+}
+
+// GetAvailableMonthsForProject retrieves all available months for a project
+func (s *PeopleStatisticsService) GetAvailableMonthsForProject(projectID string) ([]string, error) {
+	// Get the earliest and latest commit dates for this project from commits table
+	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	if earliestDate.IsZero() || latestDate.IsZero() {
+		// If no commits exist, return current month only
+		now := time.Now()
+		currentMonth := fmt.Sprintf("%d-%02d", now.Year(), now.Month())
+		return []string{currentMonth}, nil
+	}
+
+	// Generate months from earliest to latest
+	var months []string
+	startDate := earliestDate
+	endDate := latestDate
+
+	// If no data, default to current month
+	if startDate.IsZero() || endDate.IsZero() {
+		now := time.Now()
+		currentMonth := fmt.Sprintf("%d-%02d", now.Year(), now.Month())
+		return []string{currentMonth}, nil
+	}
+
+	// Generate months in descending order (newest first)
+	current := endDate
+	for current.After(startDate) || current.Equal(startDate) {
+		monthStr := fmt.Sprintf("%d-%02d", current.Year(), current.Month())
+		months = append(months, monthStr)
+
+		// Move to previous month
+		current = current.AddDate(0, -1, 0)
+	}
+
+	return months, nil
+}
+
+// GetWeeklyStatisticsByProject retrieves weekly statistics for a project
+func (s *PeopleStatisticsService) GetWeeklyStatisticsByProject(projectID string, year int, week int) ([]*models.GitHubPersonStats, error) {
+	// Get all GitHub people for this project
+	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*models.GitHubPersonStats
+	for _, person := range people {
+		// Get statistics for this person in this project for the specified week
+		stats, err := s.peopleStatsRepo.GetByProjectAndPersonAndWeek(projectID, person.ID, year, week)
+		if err != nil {
+			continue
+		}
+
+		// Aggregate the statistics
+		totalCommits := 0
+		totalAdditions := 0
+		totalDeletions := 0
+		totalComments := 0
+		totalPullRequests := 0
+		totalScore := 0
+
+		for _, stat := range stats {
+			totalCommits += stat.Commits
+			totalAdditions += stat.Additions
+			totalDeletions += stat.Deletions
+			totalComments += stat.Comments
+			totalPullRequests += stat.PullRequests
+			totalScore += stat.Score
+		}
+
+		// Create the aggregated stats
+		personStats := &models.GitHubPersonStats{
+			GitHubPerson:      person,
+			TotalCommits:      totalCommits,
+			TotalAdditions:    totalAdditions,
+			TotalDeletions:    totalDeletions,
+			TotalComments:     totalComments,
+			TotalPullRequests: totalPullRequests,
+			TotalScore:        totalScore,
+		}
+
+		results = append(results, personStats)
+	}
+
+	// Sort by total score (descending)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].TotalScore > results[j].TotalScore
+	})
+
+	return results, nil
+}
+
+// GetAvailableWeeksForProject retrieves all available weeks for a project (last 52 weeks)
+func (s *PeopleStatisticsService) GetAvailableWeeksForProject(projectID string) ([]string, error) {
+	// Get the earliest and latest commit dates for this project from commits table
+	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	if earliestDate.IsZero() || latestDate.IsZero() {
+		// If no commits exist, return current week only
+		now := time.Now()
+		year, week := now.ISOWeek()
+		currentWeek := fmt.Sprintf("%d-W%02d", year, week)
+		return []string{currentWeek}, nil
+	}
+
+	// Generate weeks from the last 52 weeks
+	var weeks []string
+	endDate := latestDate
+	startDate := endDate.AddDate(0, 0, -52*7) // 52 weeks ago
+
+	// If no data, default to current week
+	if startDate.IsZero() || endDate.IsZero() {
+		now := time.Now()
+		year, week := now.ISOWeek()
+		currentWeek := fmt.Sprintf("%d-W%02d", year, week)
+		return []string{currentWeek}, nil
+	}
+
+	// Generate weeks in descending order (newest first)
+	current := endDate
+	for current.After(startDate) || current.Equal(startDate) {
+		year, week := current.ISOWeek()
+		weekStr := fmt.Sprintf("%d-W%02d", year, week)
+		weeks = append(weeks, weekStr)
+
+		// Move to previous week
+		current = current.AddDate(0, 0, -7)
+	}
+
+	return weeks, nil
+}
+
+// GetDailyStatisticsByProject retrieves daily statistics for a project
+func (s *PeopleStatisticsService) GetDailyStatisticsByProject(projectID string, date time.Time) ([]*models.GitHubPersonStats, error) {
+	// Get all GitHub people for this project
+	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*models.GitHubPersonStats
+	for _, person := range people {
+		// Get statistics for this person in this project for the specified date
+		stats, err := s.peopleStatsRepo.GetByProjectAndPersonAndDate(projectID, person.ID, date)
+		if err != nil {
+			continue
+		}
+
+		// Aggregate the statistics (should be only one record per day)
+		totalCommits := 0
+		totalAdditions := 0
+		totalDeletions := 0
+		totalComments := 0
+		totalPullRequests := 0
+		totalScore := 0
+
+		for _, stat := range stats {
+			totalCommits += stat.Commits
+			totalAdditions += stat.Additions
+			totalDeletions += stat.Deletions
+			totalComments += stat.Comments
+			totalPullRequests += stat.PullRequests
+			totalScore += stat.Score
+		}
+
+		// Create the aggregated stats
+		personStats := &models.GitHubPersonStats{
+			GitHubPerson:      person,
+			TotalCommits:      totalCommits,
+			TotalAdditions:    totalAdditions,
+			TotalDeletions:    totalDeletions,
+			TotalComments:     totalComments,
+			TotalPullRequests: totalPullRequests,
+			TotalScore:        totalScore,
+		}
+
+		results = append(results, personStats)
+	}
+
+	// Sort by total score (descending)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].TotalScore > results[j].TotalScore
+	})
+
+	return results, nil
+}
+
+// GetAvailableDaysForProject retrieves all available days for a project (last 30 days)
+func (s *PeopleStatisticsService) GetAvailableDaysForProject(projectID string) ([]string, error) {
+	// Get the earliest and latest commit dates for this project from commits table
+	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	if earliestDate.IsZero() || latestDate.IsZero() {
+		// If no commits exist, return current day only
+		now := time.Now()
+		currentDay := now.Format("2006-01-02")
+		return []string{currentDay}, nil
+	}
+
+	// Generate days from the last 30 days
+	var days []string
+	endDate := latestDate
+	startDate := endDate.AddDate(0, 0, -30) // 30 days ago
+
+	// If no data, default to current day
+	if startDate.IsZero() || endDate.IsZero() {
+		now := time.Now()
+		currentDay := now.Format("2006-01-02")
+		return []string{currentDay}, nil
+	}
+
+	// Generate days in descending order (newest first)
+	current := endDate
+	for current.After(startDate) || current.Equal(startDate) {
+		dayStr := current.Format("2006-01-02")
+		days = append(days, dayStr)
+
+		// Move to previous day
+		current = current.AddDate(0, 0, -1)
+	}
+
+	return days, nil
 }

@@ -70,6 +70,58 @@
         {{end}}
     </div>
 
+    <!-- Excluded Folders -->
+    <div class="mb-4">
+        <h4 class="text-green-400 mb-2">Excluded Folders</h4>
+        
+        <!-- Add Folder Form -->
+        <form method="POST" action="/projects/{{.Project.ID}}/settings/folders" class="flex gap-2 mb-2">
+            <input type="text" name="folder_path" placeholder="e.g., node_modules, dist, build" class="form-control flex-1" required>
+            <button type="submit" class="btn btn-primary">Add Folder</button>
+        </form>
+
+        <!-- Current Folders -->
+        {{if .ExcludedFolders}}
+        <div class="text-xs">
+            {{range .ExcludedFolders}}
+            <div class="flex justify-between items-center mb-1 p-1 border border-gray-600">
+                <span>{{.FolderPath}}</span>
+                <form method="POST" action="/projects/{{$.Project.ID}}/settings/folders/{{.ID}}/delete" class="inline">
+                    <button type="submit" class="text-red-400 hover:text-red-300 text-xs">×</button>
+                </form>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="text-xs text-gray-400">No excluded folders configured.</p>
+        {{end}}
+    </div>
+
+    <!-- Auto Update Settings -->
+    <div class="mb-4">
+        <h4 class="text-green-400 mb-2">Automatic Updates</h4>
+        <p class="text-xs text-gray-400 mb-2">Configure automatic daily updates for this project.</p>
+        
+        <form method="POST" action="/projects/{{.Project.ID}}/settings/update-settings">
+            <div class="flex items-center gap-4 mb-2">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="auto_update_enabled" {{if .UpdateSettings.IsEnabled}}checked{{end}}>
+                    <span class="text-xs">Enable automatic updates</span>
+                </label>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <label class="text-xs">Update time (hour):</label>
+                <input type="number" name="auto_update_hour" 
+                       value="{{if .UpdateSettings}}{{.UpdateSettings.Hour}}{{else}}0{{end}}" 
+                       min="0" max="23" class="form-control w-20" required>
+                <span class="text-xs text-gray-400">(0-23, 24-hour format)</span>
+            </div>
+            
+            <button type="submit" class="btn btn-primary mt-2">Save Update Settings</button>
+        </form>
+    </div>
+
     <!-- Delete Project -->
     <div class="border-t border-gray-600 pt-4">
         <h4 class="text-red-400 mb-2">Danger Zone</h4>

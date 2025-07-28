@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alimgiray/gscope/internal/middleware"
 	"github.com/alimgiray/gscope/internal/models"
@@ -15,39 +18,48 @@ import (
 )
 
 type ProjectHandler struct {
-	projectService           *services.ProjectService
-	userService              *services.UserService
-	scoreSettingsService     *services.ScoreSettingsService
-	excludedExtensionService *services.ExcludedExtensionService
-	githubRepoService        *services.GitHubRepositoryService
-	jobService               *services.JobService
-	commitRepo               *repositories.CommitRepository
-	githubPersonRepo         *repositories.GithubPersonRepository
-	personRepo               *repositories.PersonRepository
-	emailMergeService        *services.EmailMergeService
-	githubPersonEmailService *services.GitHubPersonEmailService
-	textSimilarityService    *services.TextSimilarityService
+	projectService               *services.ProjectService
+	userService                  *services.UserService
+	scoreSettingsService         *services.ScoreSettingsService
+	excludedExtensionService     *services.ExcludedExtensionService
+	excludedFolderService        *services.ExcludedFolderService
+	githubRepoService            *services.GitHubRepositoryService
+	jobService                   *services.JobService
+	jobRepo                      *repositories.JobRepository
+	commitRepo                   *repositories.CommitRepository
+	githubPersonRepo             *repositories.GithubPersonRepository
+	personRepo                   *repositories.PersonRepository
+	emailMergeService            *services.EmailMergeService
+	githubPersonEmailService     *services.GitHubPersonEmailService
+	textSimilarityService        *services.TextSimilarityService
+	peopleStatsService           *services.PeopleStatisticsService
+	projectUpdateSettingsService *services.ProjectUpdateSettingsService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
 	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
-	githubRepoService *services.GitHubRepositoryService, jobService *services.JobService,
-	commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository,
+	excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService,
+	jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository,
 	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
-	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService) *ProjectHandler {
+	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService,
+	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService) *ProjectHandler {
 	return &ProjectHandler{
-		projectService:           projectService,
-		userService:              userService,
-		scoreSettingsService:     scoreSettingsService,
-		excludedExtensionService: excludedExtensionService,
-		githubRepoService:        githubRepoService,
-		jobService:               jobService,
-		commitRepo:               commitRepo,
-		githubPersonRepo:         githubPersonRepo,
-		personRepo:               personRepo,
-		emailMergeService:        emailMergeService,
-		githubPersonEmailService: githubPersonEmailService,
-		textSimilarityService:    textSimilarityService,
+		projectService:               projectService,
+		userService:                  userService,
+		scoreSettingsService:         scoreSettingsService,
+		excludedExtensionService:     excludedExtensionService,
+		excludedFolderService:        excludedFolderService,
+		githubRepoService:            githubRepoService,
+		jobService:                   jobService,
+		jobRepo:                      jobRepo,
+		commitRepo:                   commitRepo,
+		githubPersonRepo:             githubPersonRepo,
+		personRepo:                   personRepo,
+		emailMergeService:            emailMergeService,
+		githubPersonEmailService:     githubPersonEmailService,
+		textSimilarityService:        textSimilarityService,
+		peopleStatsService:           peopleStatsService,
+		projectUpdateSettingsService: projectUpdateSettingsService,
 	}
 }
 
@@ -387,12 +399,28 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		excludedExtensions = []*models.ExcludedExtension{}
 	}
 
+	// Get excluded folders
+	excludedFolders, err := h.excludedFolderService.GetExcludedFoldersByProjectID(projectID)
+	if err != nil {
+		excludedFolders = []*models.ExcludedFolder{}
+	}
+
+	// Get project update settings
+	updateSettings, err := h.projectUpdateSettingsService.GetProjectUpdateSettings(projectID)
+	if err != nil && err != sql.ErrNoRows {
+		// If there's an error other than "no rows", log it but continue
+		log.Printf("Error getting project update settings: %v", err)
+		updateSettings = nil
+	}
+
 	data := gin.H{
 		"Title":              "Project Settings",
 		"User":               session,
 		"Project":            project,
 		"ScoreSettings":      scoreSettings,
 		"ExcludedExtensions": excludedExtensions,
+		"ExcludedFolders":    excludedFolders,
+		"UpdateSettings":     updateSettings,
 	}
 
 	c.HTML(http.StatusOK, "project_settings", data)
@@ -719,6 +747,104 @@ func (h *ProjectHandler) FetchRepositories(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/projects/"+projectID)
+}
+
+// AddExcludedFolder handles adding excluded folders
+func (h *ProjectHandler) AddExcludedFolder(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	folderPath := strings.TrimSpace(c.PostForm("folder_path"))
+
+	if folderPath == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Folder path is required",
+		})
+		return
+	}
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	_, err = h.excludedFolderService.CreateExcludedFolder(projectID, folderPath)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to add excluded folder: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
+}
+
+// DeleteExcludedFolder handles removing excluded folders
+func (h *ProjectHandler) DeleteExcludedFolder(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	folderID := c.Param("folder_id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	if err := h.excludedFolderService.DeleteExcludedFolder(folderID); err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to delete excluded folder: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
 }
 
 // ToggleRepositoryTracking toggles the tracking status of a project repository
@@ -1440,6 +1566,363 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 	c.HTML(http.StatusOK, "project_people", data)
 }
 
+// ViewProjectReports displays the reports page for a project
+func (h *ProjectHandler) ViewProjectReports(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get all-time statistics for all GitHub people in this project
+	allTimeStats, err := h.peopleStatsService.GetAllTimeStatisticsByProject(projectID)
+	if err != nil {
+		allTimeStats = []*models.GitHubPersonStats{}
+	}
+
+	data := gin.H{
+		"Title":        "Reports - " + project.Name,
+		"User":         session,
+		"Project":      project,
+		"AllTimeStats": allTimeStats,
+	}
+
+	c.HTML(http.StatusOK, "project_reports", data)
+}
+
+// ViewProjectReportsDaily displays the daily reports page for a project
+func (h *ProjectHandler) ViewProjectReportsDaily(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get available days for this project
+	availableDays, err := h.peopleStatsService.GetAvailableDaysForProject(projectID)
+	if err != nil {
+		availableDays = []string{time.Now().Format("2006-01-02")}
+	}
+
+	// Get selected day from query parameter, default to current day
+	selectedDay := time.Now().Format("2006-01-02")
+	if dayStr := c.Query("day"); dayStr != "" {
+		selectedDay = dayStr
+	}
+
+	// Parse selected day to get date
+	selectedDate, err := time.Parse("2006-01-02", selectedDay)
+	if err != nil {
+		selectedDate = time.Now()
+	}
+
+	// Get daily statistics for the selected day
+	dailyStats, err := h.peopleStatsService.GetDailyStatisticsByProject(projectID, selectedDate)
+	if err != nil {
+		dailyStats = []*models.GitHubPersonStats{}
+	}
+
+	data := gin.H{
+		"Title":       "Daily Reports - " + project.Name,
+		"User":        session,
+		"Project":     project,
+		"Days":        availableDays,
+		"SelectedDay": selectedDay,
+		"DailyStats":  dailyStats,
+	}
+
+	c.HTML(http.StatusOK, "project_reports_daily", data)
+}
+
+// ViewProjectReportsWeekly displays the weekly reports page for a project
+func (h *ProjectHandler) ViewProjectReportsWeekly(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get available weeks for this project
+	availableWeeks, err := h.peopleStatsService.GetAvailableWeeksForProject(projectID)
+	if err != nil {
+		now := time.Now()
+		year, week := now.ISOWeek()
+		availableWeeks = []string{fmt.Sprintf("%d-W%02d", year, week)}
+	}
+
+	// Get selected week from query parameter, default to current week
+	now := time.Now()
+	year, week := now.ISOWeek()
+	selectedWeek := fmt.Sprintf("%d-W%02d", year, week)
+	if weekStr := c.Query("week"); weekStr != "" {
+		selectedWeek = weekStr
+	}
+
+	// Parse selected week to get year and week
+	var selectedYear, selectedWeekInt int
+	if _, err := fmt.Sscanf(selectedWeek, "%d-W%d", &selectedYear, &selectedWeekInt); err != nil {
+		selectedYear = year
+		selectedWeekInt = week
+	}
+
+	// Get weekly statistics for the selected week
+	weeklyStats, err := h.peopleStatsService.GetWeeklyStatisticsByProject(projectID, selectedYear, selectedWeekInt)
+	if err != nil {
+		weeklyStats = []*models.GitHubPersonStats{}
+	}
+
+	data := gin.H{
+		"Title":        "Weekly Reports - " + project.Name,
+		"User":         session,
+		"Project":      project,
+		"Weeks":        availableWeeks,
+		"SelectedWeek": selectedWeek,
+		"WeeklyStats":  weeklyStats,
+	}
+
+	c.HTML(http.StatusOK, "project_reports_weekly", data)
+}
+
+// ViewProjectReportsMonthly displays the monthly reports page for a project
+func (h *ProjectHandler) ViewProjectReportsMonthly(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get available months for this project
+	availableMonths, err := h.peopleStatsService.GetAvailableMonthsForProject(projectID)
+	if err != nil {
+		availableMonths = []string{fmt.Sprintf("%d-%02d", time.Now().Year(), time.Now().Month())}
+	}
+
+	// Get selected month from query parameter, default to current month
+	selectedMonth := fmt.Sprintf("%d-%02d", time.Now().Year(), time.Now().Month())
+	if monthStr := c.Query("month"); monthStr != "" {
+		selectedMonth = monthStr
+	}
+
+	// Parse selected month to get year and month
+	var selectedYear, selectedMonthInt int
+	if _, err := fmt.Sscanf(selectedMonth, "%d-%d", &selectedYear, &selectedMonthInt); err != nil {
+		selectedYear = time.Now().Year()
+		selectedMonthInt = int(time.Now().Month())
+	}
+
+	// Get monthly statistics for the selected month
+	monthlyStats, err := h.peopleStatsService.GetMonthlyStatisticsByProject(projectID, selectedYear, selectedMonthInt)
+	if err != nil {
+		monthlyStats = []*models.GitHubPersonStats{}
+	}
+
+	data := gin.H{
+		"Title":         "Monthly Reports - " + project.Name,
+		"User":          session,
+		"Project":       project,
+		"Months":        availableMonths,
+		"SelectedMonth": selectedMonth,
+		"MonthlyStats":  monthlyStats,
+	}
+
+	c.HTML(http.StatusOK, "project_reports_monthly", data)
+}
+
+// ViewProjectReportsYearly displays the yearly reports page for a project
+func (h *ProjectHandler) ViewProjectReportsYearly(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	// Check if the project belongs to the current owner
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get available years for this project
+	availableYears, err := h.peopleStatsService.GetAvailableYearsForProject(projectID)
+	if err != nil {
+		availableYears = []int{time.Now().Year()}
+	}
+
+	// Get selected year from query parameter, default to current year
+	selectedYear := time.Now().Year()
+	if yearStr := c.Query("year"); yearStr != "" {
+		if year, err := strconv.Atoi(yearStr); err == nil {
+			selectedYear = year
+		}
+	}
+
+	// Get yearly statistics for the selected year
+	yearlyStats, err := h.peopleStatsService.GetYearlyStatisticsByProject(projectID, selectedYear)
+	if err != nil {
+		yearlyStats = []*models.GitHubPersonStats{}
+	}
+
+	data := gin.H{
+		"Title":        "Yearly Reports - " + project.Name,
+		"User":         session,
+		"Project":      project,
+		"Years":        availableYears,
+		"SelectedYear": selectedYear,
+		"YearlyStats":  yearlyStats,
+	}
+
+	c.HTML(http.StatusOK, "project_reports_yearly", data)
+}
+
 // CreateEmailMerge creates an email merge
 func (h *ProjectHandler) CreateEmailMerge(c *gin.Context) {
 	session := middleware.GetSession(c)
@@ -1882,4 +2365,199 @@ func (h *ProjectHandler) AnalyzeAllRepositories(c *gin.Context) {
 		"success": true,
 		"message": fmt.Sprintf("Created %d analyze jobs for tracked repositories", createdJobs),
 	})
+}
+
+// UpdateAllRepositories handles updating all tracked repositories in the correct order
+func (h *ProjectHandler) UpdateAllRepositories(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	// Get all tracked repositories for this project
+	repositories, err := h.githubRepoService.GetProjectRepositories(projectID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to get tracked repositories: " + err.Error(),
+		})
+		return
+	}
+
+	// Filter to only tracked repositories
+	var trackedRepos []*models.ProjectRepository
+	for _, repo := range repositories {
+		if repo.IsTracked {
+			trackedRepos = append(trackedRepos, repo)
+		}
+	}
+
+	if len(trackedRepos) == 0 {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "No Tracked Repositories",
+			"User":  session,
+			"Error": "No tracked repositories found. Please track some repositories first.",
+		})
+		return
+	}
+
+	// Create jobs in the correct order with dependencies
+	// Each repository gets its own chain: clone -> commit -> pull_request -> stats
+
+	// Step 1: Create clone jobs for all tracked repositories
+	for _, repo := range trackedRepos {
+		cloneJob := models.NewJob(projectID, models.JobTypeClone)
+		cloneJob.ProjectRepositoryID = &repo.ID
+		if err := h.jobRepo.Create(cloneJob); err != nil {
+			c.HTML(http.StatusInternalServerError, "error", gin.H{
+				"Title": "Error",
+				"User":  session,
+				"Error": "Failed to create clone job: " + err.Error(),
+			})
+			return
+		}
+		log.Printf("Created clone job %s for repository %s", cloneJob.ID, repo.ID)
+
+		// Step 2: Create commit job that depends on this clone job
+		commitJob := models.NewJob(projectID, models.JobTypeCommit)
+		commitJob.ProjectRepositoryID = &repo.ID
+		commitJob.DependsOn = &cloneJob.ID
+		if err := h.jobRepo.Create(commitJob); err != nil {
+			c.HTML(http.StatusInternalServerError, "error", gin.H{
+				"Title": "Error",
+				"User":  session,
+				"Error": "Failed to create commit job: " + err.Error(),
+			})
+			return
+		}
+		log.Printf("Created commit job %s for repository %s (depends on %s)", commitJob.ID, repo.ID, cloneJob.ID)
+
+		// Step 3: Create pull request job that depends on this commit job
+		pullRequestJob := models.NewJob(projectID, models.JobTypePullRequest)
+		pullRequestJob.ProjectRepositoryID = &repo.ID
+		pullRequestJob.DependsOn = &commitJob.ID
+		if err := h.jobRepo.Create(pullRequestJob); err != nil {
+			c.HTML(http.StatusInternalServerError, "error", gin.H{
+				"Title": "Error",
+				"User":  session,
+				"Error": "Failed to create pull request job: " + err.Error(),
+			})
+			return
+		}
+		log.Printf("Created pull request job %s for repository %s (depends on %s)", pullRequestJob.ID, repo.ID, commitJob.ID)
+
+		// Step 4: Create stats job that depends on this pull request job
+		statsJob := models.NewJob(projectID, models.JobTypeStats)
+		statsJob.ProjectRepositoryID = &repo.ID
+		statsJob.DependsOn = &pullRequestJob.ID
+		if err := h.jobRepo.Create(statsJob); err != nil {
+			c.HTML(http.StatusInternalServerError, "error", gin.H{
+				"Title": "Error",
+				"User":  session,
+				"Error": "Failed to create stats job: " + err.Error(),
+			})
+			return
+		}
+		log.Printf("Created stats job %s for repository %s (depends on %s)", statsJob.ID, repo.ID, pullRequestJob.ID)
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID)
+}
+
+// UpdateProjectUpdateSettings handles updating project update settings
+func (h *ProjectHandler) UpdateProjectUpdateSettings(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+
+	// Validate project ownership
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "The requested project could not be found.",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil || project.OwnerID != userID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to modify this project.",
+		})
+		return
+	}
+
+	// Parse form data
+	isEnabled := c.PostForm("auto_update_enabled") == "on"
+	hourStr := c.PostForm("auto_update_hour")
+
+	var hour int
+	if hourStr != "" {
+		if _, err := fmt.Sscanf(hourStr, "%d", &hour); err != nil {
+			c.HTML(http.StatusBadRequest, "error", gin.H{
+				"Title": "Invalid Input",
+				"User":  session,
+				"Error": "Invalid hour value. Please enter a number between 0 and 23.",
+			})
+			return
+		}
+	} else {
+		hour = 0 // Default to midnight
+	}
+
+	// Validate hour
+	if hour < 0 || hour > 23 {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Invalid Input",
+			"User":  session,
+			"Error": "Hour must be between 0 and 23.",
+		})
+		return
+	}
+
+	// Update project update settings
+	_, err = h.projectUpdateSettingsService.UpsertProjectUpdateSettings(projectID, isEnabled, hour)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to update project update settings: " + err.Error(),
+		})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
 }

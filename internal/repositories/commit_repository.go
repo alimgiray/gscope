@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"sync"
 	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
@@ -9,6 +10,7 @@ import (
 
 type CommitRepository struct {
 	db *sql.DB
+	mu sync.RWMutex
 }
 
 func NewCommitRepository(db *sql.DB) *CommitRepository {
@@ -17,6 +19,9 @@ func NewCommitRepository(db *sql.DB) *CommitRepository {
 
 // Create creates a new commit
 func (r *CommitRepository) Create(commit *models.Commit) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	query := `
 		INSERT INTO commits (
 			id, github_repository_id, commit_sha, message, author_name, author_email,
@@ -35,6 +40,9 @@ func (r *CommitRepository) Create(commit *models.Commit) error {
 
 // GetByID retrieves a commit by ID
 func (r *CommitRepository) GetByID(id string) (*models.Commit, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	query := `
 		SELECT id, github_repository_id, commit_sha, message, author_name, author_email,
 			   commit_date, is_merge_commit, merge_commit_sha, additions, deletions, changes, created_at
@@ -318,4 +326,35 @@ func (r *CommitRepository) GetLatestCommitDateByRepositoryID(repositoryID string
 	}
 
 	return latestDate, nil
+}
+
+// GetDateRangeByProjectID retrieves the earliest and latest commit dates for a project
+func (r *CommitRepository) GetDateRangeByProjectID(projectID string) (time.Time, time.Time, error) {
+	query := `
+		SELECT MIN(c.commit_date), MAX(c.commit_date)
+		FROM commits c
+		INNER JOIN github_repositories gr ON c.github_repository_id = gr.id
+		INNER JOIN project_repositories pr ON gr.id = pr.github_repo_id
+		WHERE pr.project_id = ?
+	`
+
+	var earliestDateStr, latestDateStr sql.NullString
+	err := r.db.QueryRow(query, projectID).Scan(&earliestDateStr, &latestDateStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	var earliest, latest time.Time
+	if earliestDateStr.Valid && earliestDateStr.String != "" {
+		if parsed, err := time.Parse("2006-01-02 15:04:05-07:00", earliestDateStr.String); err == nil {
+			earliest = parsed
+		}
+	}
+	if latestDateStr.Valid && latestDateStr.String != "" {
+		if parsed, err := time.Parse("2006-01-02 15:04:05-07:00", latestDateStr.String); err == nil {
+			latest = parsed
+		}
+	}
+
+	return earliest, latest, nil
 }

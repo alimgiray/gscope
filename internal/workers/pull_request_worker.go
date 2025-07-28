@@ -172,14 +172,23 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 
 		log.Printf("Processing pull requests for %s/%s", owner, repoName)
 
-		// Fetch pull requests from GitHub
-		pullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName, githubRepo.ID)
+		// Step 1: Fetch new pull requests from GitHub (PRs created after our last PR)
+		newPullRequests, err := w.fetchPullRequests(ctx, userGithubClient, owner, repoName, githubRepo.ID)
 		if err != nil {
-			return fmt.Errorf("failed to fetch pull requests for %s/%s: %s", owner, repoName, err)
+			return fmt.Errorf("failed to fetch new pull requests for %s/%s: %s", owner, repoName, err)
 		}
 
+		// Step 2: Fetch and update existing open PRs from GitHub
+		existingOpenPRs, err := w.fetchExistingOpenPullRequests(ctx, userGithubClient, owner, repoName, githubRepo.ID)
+		if err != nil {
+			log.Printf("Failed to fetch existing open PRs for %s/%s: %s", owner, repoName, err)
+		}
+
+		// Combine new and existing PRs
+		allPullRequests := append(newPullRequests, existingOpenPRs...)
+
 		// Process each pull request
-		for _, pr := range pullRequests {
+		for _, pr := range allPullRequests {
 			if err := w.processPullRequest(ctx, userGithubClient, owner, repoName, pr, githubRepo.ID, job.ProjectID); err != nil {
 				log.Printf("Failed to process pull request #%d: %s", pr.GetNumber(), err)
 				continue
@@ -290,12 +299,12 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 }
 
 func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *github.Client, owner, repo string, repositoryID string) ([]*github.PullRequest, error) {
-	// Get the earliest open PR date from the database for this repository
-	earliestOpenPRDate, err := w.pullRequestRepo.GetEarliestOpenPRDateByRepositoryID(repositoryID)
+	// Get the latest PR date from the database for this repository (any PR, not just open ones)
+	latestPRDate, err := w.pullRequestRepo.GetLatestPRDateByRepositoryID(repositoryID)
 	if err != nil {
-		log.Printf("Warning: failed to get earliest open PR date for repository %s: %v", repositoryID, err)
-		// If we can't get the earliest date, process all PRs
-		earliestOpenPRDate = time.Time{}
+		log.Printf("Warning: failed to get latest PR date for repository %s: %v", repositoryID, err)
+		// If we can't get the latest date, process all PRs
+		latestPRDate = time.Time{}
 	}
 
 	var allPRs []*github.PullRequest
@@ -306,10 +315,10 @@ func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *githu
 		},
 	}
 
-	if !earliestOpenPRDate.IsZero() {
-		log.Printf("Processing PRs after %s for repository %s", earliestOpenPRDate.Format("2006-01-02 15:04:05"), repositoryID)
+	if !latestPRDate.IsZero() {
+		log.Printf("Processing PRs after %s for repository %s", latestPRDate.Format("2006-01-02 15:04:05"), repositoryID)
 	} else {
-		log.Printf("Processing all PRs for repository %s (no previous open PRs found)", repositoryID)
+		log.Printf("Processing all PRs for repository %s (no previous PRs found)", repositoryID)
 	}
 
 	for {
@@ -318,10 +327,11 @@ func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *githu
 			return nil, err
 		}
 
-		// Filter PRs by date if we have an earliest date
-		if !earliestOpenPRDate.IsZero() {
+		// Filter PRs by date if we have a latest date
+		if !latestPRDate.IsZero() {
 			for _, pr := range prs {
-				if pr.GetCreatedAt().After(earliestOpenPRDate) {
+				// Only include PRs created after our latest PR date
+				if pr.GetCreatedAt().After(latestPRDate) {
 					allPRs = append(allPRs, pr)
 				}
 			}
@@ -335,6 +345,54 @@ func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *githu
 		opts.Page = resp.NextPage
 	}
 
+	return allPRs, nil
+}
+
+// fetchExistingOpenPullRequests fetches all open PRs from GitHub to update existing ones
+func (w *PullRequestWorker) fetchExistingOpenPullRequests(ctx context.Context, client *github.Client, owner, repo string, repositoryID string) ([]*github.PullRequest, error) {
+	// Get existing open PR numbers from our database
+	existingOpenPRs, err := w.pullRequestRepo.GetOpenPRNumbersByRepositoryID(repositoryID)
+	if err != nil {
+		log.Printf("Warning: failed to get existing open PRs for repository %s: %v", repositoryID, err)
+		return nil, nil
+	}
+
+	if len(existingOpenPRs) == 0 {
+		log.Printf("No existing open PRs found for repository %s", repositoryID)
+		return nil, nil
+	}
+
+	var allPRs []*github.PullRequest
+	opts := &github.PullRequestListOptions{
+		State: "open", // Only get open PRs
+		ListOptions: github.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	for {
+		prs, resp, err := client.PullRequests.List(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		// Only include PRs that exist in our database
+		for _, pr := range prs {
+			for _, existingPRNumber := range existingOpenPRs {
+				if pr.GetNumber() == existingPRNumber {
+					allPRs = append(allPRs, pr)
+					break
+				}
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	log.Printf("Found %d existing open PRs to update for repository %s", len(allPRs), repositoryID)
 	return allPRs, nil
 }
 

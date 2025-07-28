@@ -42,6 +42,8 @@ func main() {
 	scoreSettingsService := services.NewScoreSettingsService(scoreSettingsRepo)
 	excludedExtensionRepo := repositories.NewExcludedExtensionRepository(database.DB)
 	excludedExtensionService := services.NewExcludedExtensionService(excludedExtensionRepo)
+	excludedFolderRepo := repositories.NewExcludedFolderRepository(database.DB)
+	excludedFolderService := services.NewExcludedFolderService(excludedFolderRepo)
 	githubRepoRepo := repositories.NewGitHubRepositoryRepository(database.DB)
 	projectRepoRepo := repositories.NewProjectRepositoryRepository(database.DB)
 	githubRepoService := services.NewGitHubRepositoryService(githubRepoRepo, projectRepoRepo)
@@ -84,7 +86,15 @@ func main() {
 		personRepo,
 		scoreSettingsRepo,
 		excludedExtensionRepo,
+		excludedFolderRepo,
 	)
+
+	// Project update settings service
+	projectUpdateSettingsRepo := repositories.NewProjectUpdateSettingsRepository(database.DB)
+	projectUpdateSettingsService := services.NewProjectUpdateSettingsService(projectUpdateSettingsRepo)
+
+	// Scheduler service
+	schedulerService := services.NewSchedulerService(projectUpdateSettingsRepo, jobRepo, githubRepoService)
 
 	// Initialize GitHub client
 	githubClient := github.NewClient(nil)
@@ -106,7 +116,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService)
 	loadTemplates(router)
 
 	// Start workers
@@ -114,6 +124,10 @@ func main() {
 		log.Fatalf("Failed to start workers: %v", err)
 	}
 	defer workerManager.StopAll()
+
+	// Start scheduler
+	schedulerService.StartScheduler()
+	log.Println("Automatic update scheduler started")
 
 	// Setup server
 	server := &http.Server{
@@ -138,12 +152,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, githubRepoService, jobService, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -174,6 +188,11 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.GET("/:id/people", projectHandler.ViewProjectPeople)
 		projects.POST("/:id/people/associate", projectHandler.CreateGitHubPersonEmailAssociation)
 		projects.POST("/:id/people/detach", projectHandler.DeleteGitHubPersonEmailAssociation)
+		projects.GET("/:id/reports", projectHandler.ViewProjectReports)
+		projects.GET("/:id/reports/daily", projectHandler.ViewProjectReportsDaily)
+		projects.GET("/:id/reports/weekly", projectHandler.ViewProjectReportsWeekly)
+		projects.GET("/:id/reports/monthly", projectHandler.ViewProjectReportsMonthly)
+		projects.GET("/:id/reports/yearly", projectHandler.ViewProjectReportsYearly)
 		projects.POST("/:id/fetch-repositories", projectHandler.FetchRepositories)
 		projects.POST("/:id/analyze", projectHandler.CreateAnalyzeJobs)
 		projects.POST("/:id/repositories/:repository_id/clone", projectHandler.CreateCloneJob)
@@ -183,12 +202,16 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/track-all", projectHandler.TrackAllRepositories)
 		projects.POST("/:id/fetch-all", projectHandler.FetchAllRepositories)
 		projects.POST("/:id/analyze-all", projectHandler.AnalyzeAllRepositories)
+		projects.POST("/:id/update-all", projectHandler.UpdateAllRepositories)
 		projects.POST("/:id/repositories/:repository_id/toggle-track", projectHandler.ToggleRepositoryTracking)
 		projects.GET("/:id/settings", projectHandler.ProjectSettings)
 		projects.POST("/:id/settings/name", projectHandler.UpdateProjectName)
 		projects.POST("/:id/settings/scores", projectHandler.UpdateScoreSettings)
 		projects.POST("/:id/settings/extensions", projectHandler.AddExcludedExtension)
 		projects.POST("/:id/settings/extensions/:extension_id/delete", projectHandler.DeleteExcludedExtension)
+		projects.POST("/:id/settings/folders", projectHandler.AddExcludedFolder)
+		projects.POST("/:id/settings/folders/:folder_id/delete", projectHandler.DeleteExcludedFolder)
+		projects.POST("/:id/settings/update-settings", projectHandler.UpdateProjectUpdateSettings)
 		projects.POST("/:id/settings/delete", projectHandler.DeleteProject)
 	}
 
@@ -214,5 +237,10 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/projects/settings.html"),
 		filepath.Join(cwd, "web/templates/projects/emails.html"),
 		filepath.Join(cwd, "web/templates/projects/people.html"),
+		filepath.Join(cwd, "web/templates/projects/reports.html"),
+		filepath.Join(cwd, "web/templates/projects/reports_daily.html"),
+		filepath.Join(cwd, "web/templates/projects/reports_weekly.html"),
+		filepath.Join(cwd, "web/templates/projects/reports_monthly.html"),
+		filepath.Join(cwd, "web/templates/projects/reports_yearly.html"),
 	)
 }

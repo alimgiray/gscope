@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"sync"
 	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
@@ -10,6 +11,7 @@ import (
 
 type PullRequestRepository struct {
 	db *sql.DB
+	mu sync.RWMutex
 }
 
 func NewPullRequestRepository(db *sql.DB) *PullRequestRepository {
@@ -17,6 +19,9 @@ func NewPullRequestRepository(db *sql.DB) *PullRequestRepository {
 }
 
 func (r *PullRequestRepository) Create(pr *models.PullRequest) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	pr.ID = uuid.New().String()
 
 	query := `
@@ -164,4 +169,51 @@ func (r *PullRequestRepository) GetEarliestOpenPRDateByRepositoryID(repositoryID
 	}
 
 	return earliestDate, nil
+}
+
+// GetLatestPRDateByRepositoryID gets the latest PR date for a repository (any PR, not just open ones)
+func (r *PullRequestRepository) GetLatestPRDateByRepositoryID(repositoryID string) (time.Time, error) {
+	query := `SELECT MAX(github_created_at) FROM pull_requests WHERE repository_id = ?`
+
+	var latestDateStr sql.NullString
+	err := r.db.QueryRow(query, repositoryID).Scan(&latestDateStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// If no PRs found, return zero time
+	if !latestDateStr.Valid {
+		return time.Time{}, nil
+	}
+
+	// Parse the date string
+	latestDate, err := time.Parse("2006-01-02 15:04:05-07:00", latestDateStr.String)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return latestDate, nil
+}
+
+// GetOpenPRNumbersByRepositoryID gets the PR numbers of all open PRs for a repository
+func (r *PullRequestRepository) GetOpenPRNumbersByRepositoryID(repositoryID string) ([]int, error) {
+	query := `SELECT github_pr_number FROM pull_requests WHERE repository_id = ? AND state = 'open' ORDER BY github_pr_number`
+
+	rows, err := r.db.Query(query, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prNumbers []int
+	for rows.Next() {
+		var prNumber int
+		err := rows.Scan(&prNumber)
+		if err != nil {
+			return nil, err
+		}
+		prNumbers = append(prNumbers, prNumber)
+	}
+
+	return prNumbers, nil
 }

@@ -1,0 +1,84 @@
+{{define "project_reports"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="flex justify-between items-center">
+        <div class="card-header">{{.Project.Name}} - Reports</div>
+        <a href="/projects/{{.Project.ID}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
+    </div>
+    {{if .Project.Description}}
+    <p>{{.Project.Description}}</p>
+    {{end}}
+    <div class="text-xs text-gray-400 mt-2">
+        Project reports and analytics
+    </div>
+</div>
+
+<!-- Reports Navigation -->
+<div class="card mt-4">
+    <div class="card-header">Report Types</div>
+    <div class="card-body">
+        <div class="flex gap-2 flex-wrap">
+            <a href="/projects/{{.Project.ID}}/reports/yearly" class="btn" style="background: #dc2626; color: white;">Yearly Reports</a>
+            <a href="/projects/{{.Project.ID}}/reports/monthly" class="btn" style="background: #f59e0b; color: white;">Monthly Reports</a>
+            <a href="/projects/{{.Project.ID}}/reports/weekly" class="btn" style="background: #8b5cf6; color: white;">Weekly Reports</a>
+            <a href="/projects/{{.Project.ID}}/reports/daily" class="btn" style="background: #3b82f6; color: white;">Daily Reports</a>
+        </div>
+    </div>
+</div>
+
+<!-- All-Time Reports Content -->
+<div class="card mt-4">
+    <div class="card-header">All-Time Reports</div>
+    <div class="card-body">
+        {{if .AllTimeStats}}
+            <div class="space-y-4">
+                {{range .AllTimeStats}}
+                <div class="border border-gray-600 rounded p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-lg font-semibold">{{.GitHubPerson.Username}}</span>
+                                {{if .GitHubPerson.DisplayName}}
+                                    <span class="text-sm text-gray-400">({{.GitHubPerson.DisplayName}})</span>
+                                {{end}}
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                                <div class="text-center">
+                                    <div class="text-2xl font-bold text-green-400">{{.TotalScore}}</div>
+                                    <div class="text-xs text-gray-400">Score</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-blue-400">{{.TotalCommits}}</div>
+                                    <div class="text-xs text-gray-400">Commits</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-green-400">{{.TotalAdditions}}</div>
+                                    <div class="text-xs text-gray-400">Additions</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-red-400">{{.TotalDeletions}}</div>
+                                    <div class="text-xs text-gray-400">Deletions</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-purple-400">{{.TotalPullRequests}}</div>
+                                    <div class="text-xs text-gray-400">Pull Requests</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-yellow-400">{{.TotalComments}}</div>
+                                    <div class="text-xs text-gray-400">Comments</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        {{else}}
+            <p class="text-gray-400 text-sm">No statistics available for this project.</p>
+        {{end}}
+    </div>
+</div>
+
+{{template "footer" .}}
+{{end}} 

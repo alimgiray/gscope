@@ -1,0 +1,86 @@
+{{define "project_reports_daily"}}
+{{template "header" .}}
+
+<div class="card">
+    <div class="flex justify-between items-center">
+        <div class="card-header">{{.Project.Name}} - Daily Reports</div>
+        <a href="/projects/{{.Project.ID}}/reports" class="text-green-400 hover:text-green-300 text-xs">← Back to Reports</a>
+    </div>
+    {{if .Project.Description}}
+    <p>{{.Project.Description}}</p>
+    {{end}}
+    <div class="text-xs text-gray-400 mt-2">
+        Daily reports and analytics
+    </div>
+</div>
+
+<!-- Day Selection -->
+<div class="card mt-4">
+    <div class="card-header">Select Day</div>
+    <div class="card-body">
+        <form method="GET" class="flex gap-4 items-center">
+            <select name="day" class="bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
+                {{range .Days}}
+                    <option value="{{.}}" {{if eq . $.SelectedDay}}selected{{end}}>{{.}}</option>
+                {{end}}
+            </select>
+            <button type="submit" class="btn" style="background: #ef4444; color: white;">View Statistics</button>
+        </form>
+    </div>
+</div>
+
+<!-- Daily Reports Content -->
+<div class="card mt-4">
+    <div class="card-header">Daily Reports - {{.SelectedDay}}</div>
+    <div class="card-body">
+        {{if .DailyStats}}
+            <div class="space-y-4">
+                {{range .DailyStats}}
+                <div class="border border-gray-600 rounded p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-lg font-semibold">{{.GitHubPerson.Username}}</span>
+                                {{if .GitHubPerson.DisplayName}}
+                                    <span class="text-sm text-gray-400">({{.GitHubPerson.DisplayName}})</span>
+                                {{end}}
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                                <div class="text-center">
+                                    <div class="text-2xl font-bold text-green-400">{{.TotalScore}}</div>
+                                    <div class="text-xs text-gray-400">Score</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-blue-400">{{.TotalCommits}}</div>
+                                    <div class="text-xs text-gray-400">Commits</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-green-400">{{.TotalAdditions}}</div>
+                                    <div class="text-xs text-gray-400">Additions</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-red-400">{{.TotalDeletions}}</div>
+                                    <div class="text-xs text-gray-400">Deletions</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-purple-400">{{.TotalPullRequests}}</div>
+                                    <div class="text-xs text-gray-400">Pull Requests</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-yellow-400">{{.TotalComments}}</div>
+                                    <div class="text-xs text-gray-400">Comments</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        {{else}}
+            <p class="text-gray-400 text-sm">No statistics available for {{.SelectedDay}}.</p>
+        {{end}}
+    </div>
+</div>
+
+{{template "footer" .}}
+{{end}} 
