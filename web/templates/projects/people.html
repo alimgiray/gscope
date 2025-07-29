@@ -16,67 +16,74 @@
     <div class="card-header">GitHub People</div>
     <div class="card-body">
         {{if .People}}
-            <div class="space-y-2">
+            <div class="space-y-4">
                 {{range .People}}
-                <div class="flex justify-between items-center p-2 border border-gray-600 rounded">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2">
-                            {{if .AvatarURL}}
-                                <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-6 h-6 rounded-full">
-                            {{end}}
-                            <span class="text-sm font-mono">{{.Username}}</span>
-                            {{if .DisplayName}}
-                                <span class="text-xs text-gray-400">({{.DisplayName}})</span>
-                            {{end}}
-                            {{if .Type}}
-                                <span class="text-xs bg-gray-600 text-white px-1 rounded">{{.Type}}</span>
-                            {{end}}
-                        </div>
-                        {{if .ProfileURL}}
-                            <div class="text-xs text-gray-400 mt-1">
-                                <a href="{{.ProfileURL}}" target="_blank" class="text-blue-400 hover:text-blue-300">View Profile</a>
+                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                {{if .AvatarURL}}
+                                    <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-8 h-8 rounded-full">
+                                {{end}}
+                                <span class="text-sm font-mono font-semibold text-white">{{.Username}}</span>
+                                {{if .DisplayName}}
+                                    <span class="text-xs text-gray-300">({{.DisplayName}})</span>
+                                {{end}}
+                                {{if .Type}}
+                                    <span class="text-xs bg-gray-600 text-white px-2 py-1 rounded">{{.Type}}</span>
+                                {{end}}
                             </div>
-                        {{end}}
-                        <div class="text-xs text-gray-400 mt-1">
-                            GitHub ID: {{.GithubUserID}}
-                        </div>
-                        <div class="text-xs text-gray-400 mt-1">
-                            Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}
+                            
+                            <div class="space-y-1 text-xs text-gray-400">
+                                {{if .ProfileURL}}
+                                    <p>
+                                        <a href="{{.ProfileURL}}" target="_blank" class="text-blue-400 hover:text-blue-300">View Profile</a>
+                                    </p>
+                                {{end}}
+                                <p>GitHub ID: {{.GithubUserID}}</p>
+                                <p>Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</p>
+                            </div>
+                            
+                            <!-- Email Association Section -->
+                            {{$associatedEmail := index $.PersonEmailMap .ID}}
+                            {{if $associatedEmail}}
+                                <div class="mt-3 p-3 bg-green-900 bg-opacity-20 border border-green-600 rounded">
+                                    <div class="text-green-400 font-semibold mb-2 text-sm">Associated Email:</div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="font-mono text-xs text-green-300">{{$associatedEmail}}</span>
+                                        <button onclick="detachEmail('{{$.Project.ID}}', '{{$associatedEmail}}')" 
+                                                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200">
+                                            Detach
+                                        </button>
+                                    </div>
+                                </div>
+                            {{else}}
+                                <div class="mt-3 p-3 bg-gray-900 bg-opacity-20 border border-gray-600 rounded">
+                                    <div class="text-gray-400 font-semibold mb-2 text-sm">No email associated</div>
+                                </div>
+                            {{end}}
                         </div>
                         
-                        <!-- Email Association Section -->
-                        {{$associatedEmail := index $.PersonEmailMap .ID}}
-                        {{if $associatedEmail}}
-                            <div class="text-xs text-green-400 mt-2">
-                                <span class="font-mono">Associated Email: {{$associatedEmail}}</span>
-                                <button onclick="detachEmail('{{$.Project.ID}}', '{{$associatedEmail}}')" class="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded ml-2">
-                                    Detach
-                                </button>
-                            </div>
-                        {{else}}
-                            <div class="text-xs text-gray-400 mt-2">
-                                <span>No email associated</span>
-                            </div>
+                        <!-- Email Association Controls -->
+                        {{if not $associatedEmail}}
+                        <div class="flex flex-col gap-2 ml-4">
+                            <select class="text-xs bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white" onchange="updateEmailTarget('{{.ID}}', this.value)">
+                                <option value="">Select email to associate...</option>
+                                {{$sortedEmails := index $.PersonSortedEmails .ID}}
+                                {{range $sortedEmails}}
+                                    {{if not (index $.AssociatedEmails .)}}
+                                        <option value="{{.}}">{{.}}</option>
+                                    {{end}}
+                                {{end}}
+                            </select>
+                            <button onclick="associateEmail('{{$.Project.ID}}', '{{.ID}}')" 
+                                    class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                    disabled id="associate-btn-{{.ID}}">
+                                Associate
+                            </button>
+                        </div>
                         {{end}}
                     </div>
-                    
-                    <!-- Email Association Controls -->
-                    {{if not $associatedEmail}}
-                    <div class="flex items-center gap-2">
-                        <select class="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1" onchange="updateEmailTarget('{{.ID}}', this.value)">
-                            <option value="">Select email to associate...</option>
-                            {{$sortedEmails := index $.PersonSortedEmails .ID}}
-                            {{range $sortedEmails}}
-                                {{if not (index $.AssociatedEmails .)}}
-                                    <option value="{{.}}">{{.}}</option>
-                                {{end}}
-                            {{end}}
-                        </select>
-                        <button onclick="associateEmail('{{$.Project.ID}}', '{{.ID}}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded" disabled id="associate-btn-{{.ID}}">
-                            Associate
-                        </button>
-                    </div>
-                    {{end}}
                 </div>
                 {{end}}
             </div>

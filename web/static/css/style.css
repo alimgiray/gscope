@@ -1,12 +1,12 @@
 /* Terminal-like Minimal Design */
 :root {
-    --bg-primary: #000000;
-    --bg-secondary: #0a0a0a;
+    --bg-primary: #111827; /* gray-900 */
+    --bg-secondary: #1f2937; /* gray-800 */
     --text-primary: #ffffff;
-    --text-secondary: #cccccc;
-    --border-color: #00ff00;
-    --accent: #00aa00;
-    --green-text: #00ff00;
+    --text-secondary: #d1d5db; /* gray-300 */
+    --border-color: #374151; /* gray-700 */
+    --accent: #10b981; /* green-500 */
+    --green-text: #10b981; /* green-500 */
 }
 
 * {
@@ -52,81 +52,94 @@ a:hover {
 
 /* Buttons */
 .btn {
-    background: transparent;
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    color: var(--green-text);
-    padding: 4px 8px;
+    color: var(--text-secondary);
+    padding: 8px 16px;
     font-family: 'Courier New', monospace;
-    font-size: 11px;
+    font-size: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
+    border-radius: 4px;
 }
 
 .btn:hover {
-    background: var(--green-text);
+    background: var(--accent);
     color: var(--bg-primary);
+    border-color: var(--accent);
 }
 
 .btn-primary {
-    background: var(--green-text);
+    background: var(--accent);
     color: var(--bg-primary);
+    border: 1px solid var(--accent);
 }
 
 .btn-primary:hover {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: #059669; /* green-600 */
+    border-color: #059669;
 }
 
 /* Special create project button */
 .btn-create {
-    background: var(--green-text);
+    background: var(--accent);
     color: var(--bg-primary);
-    border: 2px solid var(--green-text);
-    padding: 6px 12px;
+    border: 2px solid var(--accent);
+    padding: 8px 16px;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1px;
+    border-radius: 4px;
 }
 
 .btn-create:hover {
     background: var(--bg-primary);
-    color: var(--green-text);
-    box-shadow: 0 0 10px var(--green-text);
+    color: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
 }
 
 /* Cards */
 .card {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    padding: 8px;
-    margin-bottom: 8px;
-    font-size: 11px;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .card-header {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 4px;
-    margin-bottom: 4px;
     font-weight: bold;
-    font-size: 11px;
-    color: var(--green-text);
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
 }
 
-/* Forms */
+.card-body {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* Form controls */
 .form-control {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
-    padding: 4px 6px;
+    padding: 8px 12px;
     font-family: 'Courier New', monospace;
-    font-size: 11px;
+    font-size: 12px;
+    border-radius: 4px;
     width: 100%;
+    transition: border-color 0.2s ease;
 }
 
 .form-control:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
 /* Text utilities */

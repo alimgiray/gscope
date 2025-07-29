@@ -72,14 +72,9 @@ func (s *CloneService) CloneRepository(job *models.Job) error {
 		return fmt.Errorf("failed to create clones directory: %w", err)
 	}
 
-	// Create project-specific directory
-	projectClonePath := filepath.Join(s.cloneBasePath, project.ID.String())
-	if err := os.MkdirAll(projectClonePath, 0755); err != nil {
-		return fmt.Errorf("failed to create project clone directory: %w", err)
-	}
-
-	// Create repository-specific directory
-	repoClonePath := filepath.Join(projectClonePath, githubRepo.Name)
+	// Create repository-specific directory based on full name to avoid conflicts
+	// Use full_name to ensure unique paths for repositories with same name from different owners
+	repoClonePath := filepath.Join(s.cloneBasePath, githubRepo.FullName)
 
 	// Check if repository is already cloned
 	if s.isRepositoryCloned(repoClonePath) {
@@ -108,26 +103,41 @@ func (s *CloneService) cloneRepository(repoPath string, githubRepo *models.GitHu
 	// Create authenticated clone URL with token
 	authURL := strings.Replace(githubRepo.CloneURL, "https://", "https://"+token+"@", 1)
 
-	// Clone the repository with authentication
-	cmd := exec.Command("git", "clone", authURL, repoPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Try to clone with retry logic for potential lock issues
+	maxRetries := 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Clone the repository with authentication
+		cmd := exec.Command("git", "clone", authURL, repoPath)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to clone repository: %w", err)
+		if err := cmd.Run(); err != nil {
+			if attempt < maxRetries {
+				fmt.Printf("Git clone failed (attempt %d/%d), cleaning up and retrying in 2 seconds: %v\n", attempt, maxRetries, err)
+				// Clean up the failed clone attempt
+				if err := os.RemoveAll(repoPath); err != nil {
+					fmt.Printf("Warning: failed to clean up failed clone: %v\n", err)
+				}
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			return fmt.Errorf("failed to clone repository after %d attempts: %w", maxRetries, err)
+		}
+
+		// Success - update GitHub repository record
+		now := time.Now()
+		githubRepo.IsCloned = true
+		githubRepo.LastCloned = &now
+		githubRepo.LocalPath = &repoPath
+
+		if err := s.githubRepoRepo.Update(githubRepo); err != nil {
+			return fmt.Errorf("failed to update GitHub repository record: %w", err)
+		}
+
+		return nil
 	}
 
-	// Update GitHub repository record
-	now := time.Now()
-	githubRepo.IsCloned = true
-	githubRepo.LastCloned = &now
-	githubRepo.LocalPath = &repoPath
-
-	if err := s.githubRepoRepo.Update(githubRepo); err != nil {
-		return fmt.Errorf("failed to update GitHub repository record: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("failed to clone repository after %d attempts", maxRetries)
 }
 
 // pullRepository performs a git pull on an existing repository
@@ -147,28 +157,126 @@ func (s *CloneService) pullRepository(repoPath string, githubRepo *models.GitHub
 		return fmt.Errorf("failed to set remote URL: %w", err)
 	}
 
-	// Pull the repository
-	cmd = exec.Command("git", "pull")
+	// Try to pull with retry logic for Git lock errors
+	maxRetries := 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Clean up any potential lock files before attempting pull
+		if err := s.cleanupGitLocks(repoPath); err != nil {
+			// Log but don't fail - this is just cleanup
+			fmt.Printf("Warning: failed to cleanup Git locks (attempt %d): %v\n", attempt, err)
+		}
+
+		// Pull the repository
+		cmd = exec.Command("git", "pull")
+		cmd.Dir = repoPath
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			if attempt < maxRetries {
+				fmt.Printf("Git pull failed (attempt %d/%d), trying fetch and reset: %v\n", attempt, maxRetries, err)
+
+				// Try fetch and reset as an alternative to pull
+				if fetchErr := s.fetchAndReset(repoPath); fetchErr != nil {
+					fmt.Printf("Fetch and reset also failed, retrying pull in 2 seconds: %v\n", fetchErr)
+					time.Sleep(2 * time.Second)
+					continue
+				} else {
+					// Fetch and reset succeeded, break out of retry loop
+					break
+				}
+			}
+			return fmt.Errorf("failed to pull repository after %d attempts: %w", maxRetries, err)
+		}
+
+		// Success - update GitHub repository record
+		now := time.Now()
+		githubRepo.LastCloned = &now
+		githubRepo.LocalPath = &repoPath
+
+		if err := s.githubRepoRepo.Update(githubRepo); err != nil {
+			return fmt.Errorf("failed to update GitHub repository record: %w", err)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("failed to pull repository after %d attempts", maxRetries)
+}
+
+// fetchAndReset performs a git fetch and reset to handle remote ref lock issues
+func (s *CloneService) fetchAndReset(repoPath string) error {
+	// Fetch all remotes
+	cmd := exec.Command("git", "fetch", "--all")
 	cmd.Dir = repoPath
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to pull repository: %w", err)
+		return fmt.Errorf("failed to fetch all remotes: %w", err)
 	}
 
-	// Update GitHub repository record
-	now := time.Now()
-	githubRepo.LastCloned = &now
+	// Get current branch
+	cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+	currentBranch := strings.TrimSpace(string(output))
 
-	if err := s.githubRepoRepo.Update(githubRepo); err != nil {
-		return fmt.Errorf("failed to update GitHub repository record: %w", err)
+	// Reset to origin/branch
+	cmd = exec.Command("git", "reset", "--hard", "origin/"+currentBranch)
+	cmd.Dir = repoPath
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to reset to origin/%s: %w", currentBranch, err)
+	}
+
+	return nil
+}
+
+// cleanupGitLocks removes Git lock files that might be causing issues
+func (s *CloneService) cleanupGitLocks(repoPath string) error {
+	gitDir := filepath.Join(repoPath, ".git")
+
+	// List of common Git lock files to remove
+	lockFiles := []string{
+		filepath.Join(gitDir, "index.lock"),
+		filepath.Join(gitDir, "refs", "heads", "*.lock"),
+		filepath.Join(gitDir, "refs", "remotes", "*.lock"),
+		filepath.Join(gitDir, "MERGE_HEAD.lock"),
+		filepath.Join(gitDir, "CHERRY_PICK_HEAD.lock"),
+		filepath.Join(gitDir, "REBASE_HEAD.lock"),
+	}
+
+	for _, lockFile := range lockFiles {
+		// Use glob pattern matching for wildcard patterns
+		if strings.Contains(lockFile, "*") {
+			matches, err := filepath.Glob(lockFile)
+			if err != nil {
+				continue
+			}
+			for _, match := range matches {
+				if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
+					// Log but don't fail - this is just cleanup
+					fmt.Printf("Warning: failed to remove lock file %s: %v\n", match, err)
+				}
+			}
+		} else {
+			if err := os.Remove(lockFile); err != nil && !os.IsNotExist(err) {
+				// Log but don't fail - this is just cleanup
+				fmt.Printf("Warning: failed to remove lock file %s: %v\n", lockFile, err)
+			}
+		}
 	}
 
 	return nil
 }
 
 // GetClonePath returns the local path where a repository is cloned
-func (s *CloneService) GetClonePath(repoName string) string {
-	return filepath.Join(s.cloneBasePath, repoName)
+func (s *CloneService) GetClonePath(fullName string) string {
+	return filepath.Join(s.cloneBasePath, fullName)
 }

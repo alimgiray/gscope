@@ -14,6 +14,7 @@ type ProjectRepository struct {
 	IsAnalyzed   bool       `json:"is_analyzed"`
 	IsTracked    bool       `json:"is_tracked"`
 	LastAnalyzed *time.Time `json:"last_analyzed"`
+	LastFetched  *time.Time `json:"last_fetched"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DeletedAt    *time.Time `json:"deleted_at"`

@@ -156,8 +156,8 @@ func (s *PeopleStatisticsService) calculateDailyStatistics(
 		)
 
 		if stats != nil && (stats.Score > 0 || stats.Commits > 0 || stats.PullRequests > 0 || stats.Comments > 0) {
-			// Insert if there's any activity (score > 0 or any commits/PRs/comments)
-			if err := s.peopleStatsRepo.Create(stats); err != nil {
+			// Upsert if there's any activity (score > 0 or any commits/PRs/comments)
+			if err := s.peopleStatsRepo.Upsert(stats); err != nil {
 				return err
 			}
 		}

@@ -251,6 +251,7 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		hasActiveCloneJobs := false
 		latestCloneJobFailed := false
 		latestCloneJobError := ""
+		failedCloneJobID := ""
 
 		// Check for active clone or commit jobs (commit depends on clone)
 		for _, job := range allJobs {
@@ -261,6 +262,7 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 				}
 				if job.JobType == models.JobTypeClone && job.Status == models.JobStatusFailed {
 					latestCloneJobFailed = true
+					failedCloneJobID = job.ID
 					if job.ErrorMessage != nil {
 						latestCloneJobError = *job.ErrorMessage
 					}
@@ -278,6 +280,7 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		hasActiveAnalyzeJobs := false
 		latestAnalyzeJobFailed := false
 		latestAnalyzeJobError := ""
+		failedAnalyzeJobID := ""
 
 		// Check for active pull_request or stats jobs (stats depends on pull_request)
 		for _, job := range repoJobs {
@@ -288,6 +291,7 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 				}
 				if job.JobType == models.JobTypePullRequest && job.Status == models.JobStatusFailed {
 					latestAnalyzeJobFailed = true
+					failedAnalyzeJobID = job.ID
 					if job.ErrorMessage != nil {
 						latestAnalyzeJobError = *job.ErrorMessage
 					}
@@ -318,18 +322,34 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			}
 		}
 
+		// Get all failed jobs for this repository for display
+		var failedJobs []map[string]interface{}
+		for _, job := range allJobs {
+			if job.Status == models.JobStatusFailed {
+				failedJobs = append(failedJobs, map[string]interface{}{
+					"ID":           job.ID,
+					"JobType":      job.JobType,
+					"ErrorMessage": job.ErrorMessage,
+					"CreatedAt":    job.CreatedAt,
+				})
+			}
+		}
+
 		repositories = append(repositories, map[string]interface{}{
 			"ProjectRepo":                 projectRepo,
 			"GitHubRepo":                  githubRepo,
 			"HasActiveCloneJobs":          hasActiveCloneJobs,
 			"LatestCloneJobFailed":        latestCloneJobFailed,
 			"LatestCloneJobError":         latestCloneJobError,
+			"FailedCloneJobID":            failedCloneJobID,
 			"HasActiveAnalyzeJobs":        hasActiveAnalyzeJobs,
 			"LatestAnalyzeJobFailed":      latestAnalyzeJobFailed,
 			"LatestAnalyzeJobError":       latestAnalyzeJobError,
+			"FailedAnalyzeJobID":          failedAnalyzeJobID,
 			"HasCompletedPullRequestJobs": hasCompletedPullRequestJobs,
 			"IsRepositoryCloned":          isRepositoryCloned,
 			"HasGitHubPeopleWithEmails":   hasGitHubPeopleWithEmails,
+			"FailedJobs":                  failedJobs,
 		})
 	}
 
@@ -2560,4 +2580,62 @@ func (h *ProjectHandler) UpdateProjectUpdateSettings(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/projects/"+projectID+"/settings")
+}
+
+// RetryFailedJob retries a specific failed job
+func (h *ProjectHandler) RetryFailedJob(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		return
+	}
+
+	jobID := c.Param("job_id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Job ID is required"})
+		return
+	}
+
+	// Get the job
+	job, err := h.jobRepo.GetByID(jobID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Job not found"})
+		return
+	}
+
+	// Check if the job belongs to a project owned by the current user
+	userID, err := uuid.Parse(session.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user session"})
+		return
+	}
+
+	project, err := h.projectService.GetProjectByID(job.ProjectID)
+	if err != nil || project.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+		return
+	}
+
+	// Check if the job is actually failed
+	if job.Status != models.JobStatusFailed {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Job is not in failed state"})
+		return
+	}
+
+	// Create a new job with the same parameters but reset status
+	newJob := models.NewJob(job.ProjectID, job.JobType)
+	newJob.ProjectRepositoryID = job.ProjectRepositoryID
+	newJob.DependsOn = job.DependsOn
+
+	// Save the new job
+	if err := h.jobRepo.Create(newJob); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create retry job"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Retry job created for %s job", job.JobType),
+		"job_id":  newJob.ID,
+	})
 }

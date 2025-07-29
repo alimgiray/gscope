@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS project_repositories (
     is_analyzed BOOLEAN DEFAULT FALSE,
     last_analyzed DATETIME,
     is_tracked BOOLEAN DEFAULT FALSE,
+    last_fetched DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME,
@@ -19,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_project_repositories_github_repo_id ON project_re
 CREATE INDEX IF NOT EXISTS idx_project_repositories_is_analyzed ON project_repositories(is_analyzed);
 CREATE INDEX IF NOT EXISTS idx_project_repositories_deleted_at ON project_repositories(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_project_repositories_created_at ON project_repositories(created_at);
+CREATE INDEX IF NOT EXISTS idx_project_repositories_last_fetched ON project_repositories(last_fetched); 
 
 -- Create unique constraint to prevent duplicate project-repo associations
 CREATE UNIQUE INDEX IF NOT EXISTS idx_project_repositories_unique 

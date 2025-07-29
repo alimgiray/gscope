@@ -48,91 +48,147 @@
     <div class="card-header">Repositories</div>
     <div class="card-body">
         {{if .Repositories}}
-            <div class="space-y-2">
+            <div class="space-y-4">
                 {{range .Repositories}}
-                <div class="flex justify-between items-center p-2 border border-gray-600 rounded" data-clone-url="{{.GitHubRepo.CloneURL}}" data-repo-name="{{.GitHubRepo.FullName}}">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-mono">{{.GitHubRepo.FullName}}</span>
-                            {{if .ProjectRepo.IsTracked}}
-                                <span class="text-xs bg-green-600 text-white px-1 rounded">Tracked</span>
-                            {{else}}
-                                <span class="text-xs bg-gray-600 text-white px-1 rounded">Untracked</span>
+                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50" data-clone-url="{{.GitHubRepo.CloneURL}}" data-repo-name="{{.GitHubRepo.FullName}}">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-sm font-mono font-semibold text-white">{{.GitHubRepo.FullName}}</span>
+                                <div class="flex gap-1">
+                                    {{if .ProjectRepo.IsTracked}}
+                                        <span class="text-xs bg-green-600 text-white px-2 py-1 rounded">Tracked</span>
+                                    {{else}}
+                                        <span class="text-xs bg-gray-600 text-white px-2 py-1 rounded">Untracked</span>
+                                    {{end}}
+                                    {{if .GitHubRepo.IsCloned}}
+                                        <span class="text-xs bg-purple-600 text-white px-2 py-1 rounded">Cloned</span>
+                                    {{end}}
+                                    {{if .ProjectRepo.IsAnalyzed}}
+                                        <span class="text-xs bg-orange-600 text-white px-2 py-1 rounded">Analyzed</span>
+                                    {{end}}
+                                </div>
+                            </div>
+                            {{if .GitHubRepo.Description}}
+                                <p class="text-xs text-gray-300 mb-2">{{.GitHubRepo.Description}}</p>
                             {{end}}
-                            {{if .GitHubRepo.IsCloned}}
-                                <span class="text-xs bg-purple-600 text-white px-1 rounded">Cloned</span>
+                            <div class="space-y-1 text-xs text-gray-400">
+                                {{if .GitHubRepo.IsCloned}}
+                                    <p>Last cloned: {{.GitHubRepo.LastCloned.Format "2006-01-02 15:04:05"}}</p>
+                                {{end}}
+                                {{if .ProjectRepo.LastFetched}}
+                                    <p>Last fetched: {{.ProjectRepo.LastFetched.Format "2006-01-02 15:04:05"}}</p>
+                                {{else}}
+                                    <p>Last fetched: never fetched</p>
+                                {{end}}
+                                <p>
+                                    {{if .ProjectRepo.LastAnalyzed}}
+                                        Last analyzed: {{.ProjectRepo.LastAnalyzed.Format "2006-01-02 15:04:05"}}
+                                    {{else}}
+                                        Last analyzed: never analyzed
+                                    {{end}}
+                                </p>
+                            </div>
+                        
+                            <!-- Job Status Information -->
+                            <div class="text-xs mt-2">
+                                {{if .LatestCloneJobFailed}}
+                                    <div class="text-red-400 bg-red-900 bg-opacity-20 px-2 py-1 rounded">⚠️ Clone job failed: {{.LatestCloneJobError}}</div>
+                                {{end}}
+                                {{if .LatestAnalyzeJobFailed}}
+                                    <div class="text-red-400 bg-red-900 bg-opacity-20 px-2 py-1 rounded">⚠️ Analyze job failed: {{.LatestAnalyzeJobError}}</div>
+                                {{end}}
+                            </div>
+                            
+                            <!-- Failed Jobs Section -->
+                            {{if .FailedJobs}}
+                            <div class="mt-3 p-3 bg-red-900 bg-opacity-10 border border-red-600 rounded">
+                                <div class="text-red-400 font-semibold mb-2 text-sm">Failed Jobs:</div>
+                                {{range .FailedJobs}}
+                                <div class="bg-red-900 bg-opacity-30 border border-red-500 rounded p-3 mb-2">
+                                    <div class="flex justify-between items-start gap-3">
+                                        <div class="flex-1">
+                                            <div class="flex items-center gap-2 mb-1">
+                                                <span class="text-red-400 font-mono text-sm font-semibold">{{.JobType}}</span>
+                                                <span class="text-gray-400 text-xs">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
+                                            </div>
+                                            {{if .ErrorMessage}}
+                                            <div class="text-red-300 text-xs leading-relaxed">{{.ErrorMessage}}</div>
+                                            {{end}}
+                                        </div>
+                                        <button onclick="retryFailedJob('{{.ID}}')" 
+                                                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200 flex-shrink-0">
+                                            Retry
+                                        </button>
+                                    </div>
+                                </div>
+                                {{end}}
+                            </div>
                             {{end}}
-                            {{if .ProjectRepo.IsAnalyzed}}
-                                <span class="text-xs bg-orange-600 text-white px-1 rounded">Analyzed</span>
-                            {{end}}
+                            <div class="flex gap-4 text-xs text-gray-400 mt-3">
+                                <span class="flex items-center gap-1">⭐ {{.GitHubRepo.Stars}}</span>
+                                <span class="flex items-center gap-1">🍴 {{.GitHubRepo.Forks}}</span>
+                                {{if .GitHubRepo.Language}}
+                                    <span class="flex items-center gap-1">{{.GitHubRepo.Language}}</span>
+                                {{end}}
+                                {{if .GitHubRepo.Private}}
+                                    <span class="flex items-center gap-1">🔒 Private</span>
+                                {{end}}
+                            </div>
                         </div>
-                        {{if .GitHubRepo.Description}}
-                            <p class="text-xs text-gray-400 mt-1">{{.GitHubRepo.Description}}</p>
-                        {{end}}
-                        {{if .GitHubRepo.IsCloned}}
-                            <p class="text-xs text-gray-400 mt-1">Last cloned: {{.GitHubRepo.LastCloned.Format "2006-01-02 15:04:05"}}</p>
-                        {{end}}
-                        <p class="text-xs text-gray-400 mt-1">
-                            {{if .ProjectRepo.LastAnalyzed}}
-                                Last analyzed: {{.ProjectRepo.LastAnalyzed.Format "2006-01-02 15:04:05"}}
-                            {{else}}
-                                Last analyzed: never analyzed
-                            {{end}}
-                        </p>
-                        <div class="flex gap-4 text-xs text-gray-400 mt-1">
-                            <span>⭐ {{.GitHubRepo.Stars}}</span>
-                            <span>🍴 {{.GitHubRepo.Forks}}</span>
-                            {{if .GitHubRepo.Language}}
-                                <span>{{.GitHubRepo.Language}}</span>
-                            {{end}}
-                            {{if .GitHubRepo.Private}}
-                                <span>🔒 Private</span>
-                            {{end}}
-                        </div>
-                    </div>
-                    <div class="flex gap-1">
+                        <div class="flex flex-col gap-2 ml-4">
                         {{if .ProjectRepo.IsTracked}}
                             {{if .HasActiveCloneJobs}}
-                                <button disabled class="text-xs text-yellow-400 cursor-not-allowed">
+                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50">
                                     Cloning...
                                 </button>
                             {{else if .LatestCloneJobFailed}}
-                                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestCloneJobError}}">
+                                <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
+                                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                        title="Last attempt failed: {{.LatestCloneJobError}}">
                                     Retry Clone
                                 </button>
                             {{else}}
-                                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-purple-400 hover:text-purple-300">
+                                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                        class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200">
                                     {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
                                 </button>
                             {{end}}
                         {{end}}
                         {{if .ProjectRepo.IsTracked}}
                             {{if .HasActiveAnalyzeJobs}}
-                                <button disabled class="text-xs text-yellow-400 cursor-not-allowed">
+                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50">
                                     Processing...
                                 </button>
                             {{else if .LatestAnalyzeJobFailed}}
-                                <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-red-400 hover:text-red-300" title="Last attempt failed: {{.LatestAnalyzeJobError}}">
+                                <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
+                                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                        title="Last attempt failed: {{.LatestAnalyzeJobError}}">
                                     Retry Analyze
                                 </button>
                             {{else}}
-                                <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-green-400 hover:text-green-300">
+                                <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                        class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200">
                                     Fetch Github
                                 </button>
                                 {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
-                                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" class="text-xs text-blue-400 hover:text-blue-300">
+                                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200">
                                         Analyze
                                     </button>
                                 {{else}}
-                                    <button disabled class="text-xs text-gray-400 cursor-not-allowed" title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
+                                    <button disabled class="text-xs bg-gray-600 text-gray-300 px-3 py-1 rounded cursor-not-allowed opacity-50" 
+                                            title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
                                         Analyze
                                     </button>
                                 {{end}}
                             {{end}}
                         {{end}}
-                        <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" class="text-xs {{if .ProjectRepo.IsTracked}}text-red-400 hover:text-red-300{{else}}text-green-400 hover:text-green-300{{end}}">
+                        <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" 
+                                class="text-xs {{if .ProjectRepo.IsTracked}}bg-red-600 hover:bg-red-500{{else}}bg-green-600 hover:bg-green-500{{end}} text-white px-3 py-1 rounded transition-colors duration-200">
                             {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
                         </button>
+                        </div>
                     </div>
                 </div>
                 {{end}}
@@ -212,7 +268,8 @@ function restoreScrollPosition() {
 
 // Auto-refresh functionality for active jobs
 function hasActiveJobs() {
-    const activeJobButtons = document.querySelectorAll('button[disabled].text-yellow-400');
+    // Look for disabled buttons with yellow background (active job indicators)
+    const activeJobButtons = document.querySelectorAll('button[disabled].bg-yellow-600');
     return activeJobButtons.length > 0;
 }
 
@@ -263,7 +320,7 @@ function cloneRepository(projectId, repositoryId) {
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = 'Cloning...';
-    button.className = 'text-xs text-yellow-400 cursor-not-allowed';
+    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
     
     fetch(`/projects/${projectId}/repositories/${repositoryId}/clone`, {
         method: 'POST',
@@ -275,16 +332,13 @@ function cloneRepository(projectId, repositoryId) {
     .then(data => {
         if (data.success) {
             showToast(data.message || 'Clone job created successfully', 'success');
-            // Refresh the page after a short delay to show updated status
-            setTimeout(() => {
-                saveScrollPosition();
-                window.location.reload();
-            }, 100);
+            // Start auto-refresh instead of immediate reload
+            startAutoRefresh();
         } else {
             // Restore button state on error
             button.disabled = false;
             button.textContent = originalText;
-            button.className = 'text-xs text-purple-400 hover:text-purple-300';
+            button.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
             showToast(data.message || 'Failed to create clone job', 'error');
         }
     })
@@ -293,7 +347,7 @@ function cloneRepository(projectId, repositoryId) {
         // Restore button state on error
         button.disabled = false;
         button.textContent = originalText;
-        button.className = 'text-xs text-purple-400 hover:text-purple-300';
+        button.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
         showToast('Failed to create clone job', 'error');
     });
 }
@@ -337,7 +391,7 @@ function fetchGithub(projectId, repositoryId) {
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = 'Fetching...';
-    button.className = 'text-xs text-yellow-400 cursor-not-allowed';
+    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
     
     fetch(`/projects/${projectId}/repositories/${repositoryId}/fetch-github`, {
         method: 'POST',
@@ -349,16 +403,13 @@ function fetchGithub(projectId, repositoryId) {
     .then(data => {
         if (data.success) {
             showToast(data.message || 'Fetch Github job created successfully', 'success');
-            // Refresh the page after a short delay to show updated status
-            setTimeout(() => {
-                saveScrollPosition();
-                window.location.reload();
-            }, 100);
+            // Start auto-refresh instead of immediate reload
+            startAutoRefresh();
         } else {
             // Restore button state on error
             button.disabled = false;
             button.textContent = originalText;
-            button.className = 'text-xs text-green-400 hover:text-green-300';
+            button.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
             showToast(data.message || 'Failed to create fetch Github job', 'error');
         }
     })
@@ -367,7 +418,7 @@ function fetchGithub(projectId, repositoryId) {
         // Restore button state on error
         button.disabled = false;
         button.textContent = originalText;
-        button.className = 'text-xs text-green-400 hover:text-green-300';
+        button.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
         showToast('Failed to create fetch Github job', 'error');
     });
 }
@@ -381,7 +432,7 @@ function analyzeRepository(projectId, repositoryId) {
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = 'Analyzing...';
-    button.className = 'text-xs text-yellow-400 cursor-not-allowed';
+    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
     
     fetch(`/projects/${projectId}/repositories/${repositoryId}/analyze`, {
         method: 'POST',
@@ -393,16 +444,13 @@ function analyzeRepository(projectId, repositoryId) {
     .then(data => {
         if (data.success) {
             showToast(data.message || 'Analysis job created successfully', 'success');
-            // Refresh the page after a short delay to show updated status
-            setTimeout(() => {
-                saveScrollPosition();
-                window.location.reload();
-            }, 100);
+            // Start auto-refresh instead of immediate reload
+            startAutoRefresh();
         } else {
             // Restore button state on error
             button.disabled = false;
             button.textContent = originalText;
-            button.className = 'text-xs text-blue-400 hover:text-blue-300';
+            button.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
             showToast(data.message || 'Failed to create analysis job', 'error');
         }
     })
@@ -411,7 +459,7 @@ function analyzeRepository(projectId, repositoryId) {
         // Restore button state on error
         button.disabled = false;
         button.textContent = originalText;
-        button.className = 'text-xs text-blue-400 hover:text-blue-300';
+        button.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
         showToast('Failed to create analysis job', 'error');
     });
 }
@@ -530,16 +578,20 @@ function analyzeAllRepositories(projectId) {
             'Content-Type': 'application/json',
         },
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showToast(data.message || 'Analyze jobs created successfully', 'success');
-            // Refresh the page after a short delay to show updated status
-            setTimeout(() => {
-                saveScrollPosition();
-                window.location.reload();
-            }, 100);
+    .then(response => {
+        if (response.redirected) {
+            // If the response is a redirect, follow it
+            window.location.href = response.url;
         } else {
+            return response.json();
+        }
+    })
+    .then(data => {
+        if (data && data.success) {
+            showToast(data.message || 'Analyze jobs created successfully', 'success');
+            // Start auto-refresh instead of immediate reload
+            startAutoRefresh();
+        } else if (data) {
             showToast(data.message || 'Failed to create analyze jobs', 'error');
         }
     })
@@ -570,11 +622,8 @@ function updateAllRepositories(projectId) {
     .then(data => {
         if (data && data.success) {
             showToast(data.message || 'Update jobs created successfully', 'success');
-            // Refresh the page after a short delay to show updated status
-            setTimeout(() => {
-                saveScrollPosition();
-                window.location.reload();
-            }, 100);
+            // Start auto-refresh instead of immediate reload
+            startAutoRefresh();
         } else if (data) {
             showToast(data.message || 'Failed to create update jobs', 'error');
         }
@@ -582,6 +631,48 @@ function updateAllRepositories(projectId) {
     .catch(error => {
         console.error('Error:', error);
         showToast('Failed to create update jobs', 'error');
+    });
+}
+
+// General retry function for any failed job
+function retryFailedJob(jobId) {
+    // Prevent any default behavior that might cause scroll jump
+    event.preventDefault();
+    
+    // Find the button that was clicked and disable it immediately
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Retrying...';
+    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+    
+    fetch(`/jobs/${jobId}/retry`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Retry job created successfully', 'success');
+            // Start auto-refresh instead of immediate reload
+            startAutoRefresh();
+        } else {
+            // Restore button state on error
+            button.disabled = false;
+            button.textContent = originalText;
+            button.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+            showToast(data.message || 'Failed to create retry job', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        // Restore button state on error
+        button.disabled = false;
+        button.textContent = originalText;
+        button.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+        showToast('Failed to create retry job', 'error');
     });
 }
 </script>

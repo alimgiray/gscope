@@ -52,7 +52,7 @@ func (w *CommitWorker) Start(ctx context.Context) error {
 			return nil
 		default:
 			// Try to get a pending commit job
-			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeCommit)
+			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeCommit, w.WorkerID)
 			if err != nil {
 				log.Printf("Commit worker %s error getting job: %v", w.WorkerID, err)
 				time.Sleep(5 * time.Second)

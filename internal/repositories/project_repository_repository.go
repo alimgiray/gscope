@@ -19,13 +19,13 @@ func NewProjectRepositoryRepository(db *sql.DB) *ProjectRepositoryRepository {
 func (r *ProjectRepositoryRepository) Create(projectRepo *models.ProjectRepository) error {
 	query := `
 		INSERT INTO project_repositories (
-			id, project_id, github_repo_id, is_analyzed, is_tracked, last_analyzed, deleted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			id, project_id, github_repo_id, is_analyzed, is_tracked, last_analyzed, last_fetched, deleted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := r.db.Exec(query,
 		projectRepo.ID, projectRepo.ProjectID, projectRepo.GithubRepoID,
-		projectRepo.IsAnalyzed, projectRepo.IsTracked, projectRepo.LastAnalyzed, projectRepo.DeletedAt,
+		projectRepo.IsAnalyzed, projectRepo.IsTracked, projectRepo.LastAnalyzed, projectRepo.LastFetched, projectRepo.DeletedAt,
 	)
 
 	return err
@@ -34,7 +34,7 @@ func (r *ProjectRepositoryRepository) Create(projectRepo *models.ProjectReposito
 // GetByID retrieves a project repository by ID
 func (r *ProjectRepositoryRepository) GetByID(id string) (*models.ProjectRepository, error) {
 	query := `
-		SELECT id, project_id, github_repo_id, is_analyzed, is_tracked, last_analyzed,
+		SELECT id, project_id, github_repo_id, is_analyzed, is_tracked, last_analyzed, last_fetched,
 			   created_at, updated_at, deleted_at
 		FROM project_repositories WHERE id = ? AND deleted_at IS NULL
 	`
@@ -42,7 +42,7 @@ func (r *ProjectRepositoryRepository) GetByID(id string) (*models.ProjectReposit
 	projectRepo := &models.ProjectRepository{}
 	err := r.db.QueryRow(query, id).Scan(
 		&projectRepo.ID, &projectRepo.ProjectID, &projectRepo.GithubRepoID,
-		&projectRepo.IsAnalyzed, &projectRepo.IsTracked, &projectRepo.LastAnalyzed,
+		&projectRepo.IsAnalyzed, &projectRepo.IsTracked, &projectRepo.LastAnalyzed, &projectRepo.LastFetched,
 		&projectRepo.CreatedAt, &projectRepo.UpdatedAt, &projectRepo.DeletedAt,
 	)
 
@@ -56,7 +56,7 @@ func (r *ProjectRepositoryRepository) GetByID(id string) (*models.ProjectReposit
 // GetByProjectID retrieves all repositories for a project
 func (r *ProjectRepositoryRepository) GetByProjectID(projectID string) ([]*models.ProjectRepository, error) {
 	query := `
-		SELECT id, project_id, github_repo_id, is_analyzed, is_tracked, last_analyzed,
+		SELECT id, project_id, github_repo_id, is_analyzed, is_tracked, last_analyzed, last_fetched,
 			   created_at, updated_at, deleted_at
 		FROM project_repositories WHERE project_id = ? AND deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -73,7 +73,7 @@ func (r *ProjectRepositoryRepository) GetByProjectID(projectID string) ([]*model
 		projectRepo := &models.ProjectRepository{}
 		err := rows.Scan(
 			&projectRepo.ID, &projectRepo.ProjectID, &projectRepo.GithubRepoID,
-			&projectRepo.IsAnalyzed, &projectRepo.IsTracked, &projectRepo.LastAnalyzed,
+			&projectRepo.IsAnalyzed, &projectRepo.IsTracked, &projectRepo.LastAnalyzed, &projectRepo.LastFetched,
 			&projectRepo.CreatedAt, &projectRepo.UpdatedAt, &projectRepo.DeletedAt,
 		)
 		if err != nil {
@@ -94,6 +94,18 @@ func (r *ProjectRepositoryRepository) UpdateLastAnalyzed(id string, lastAnalyzed
 	`
 
 	_, err := r.db.Exec(query, lastAnalyzed, id)
+	return err
+}
+
+// UpdateLastFetched updates the last_fetched field for a project repository
+func (r *ProjectRepositoryRepository) UpdateLastFetched(id string, lastFetched *time.Time) error {
+	query := `
+		UPDATE project_repositories 
+		SET last_fetched = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND deleted_at IS NULL
+	`
+
+	_, err := r.db.Exec(query, lastFetched, id)
 	return err
 }
 

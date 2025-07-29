@@ -48,7 +48,7 @@ func (w *StatsWorker) Start(ctx context.Context) error {
 			return nil
 		default:
 			// Try to get a pending stats job
-			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeStats)
+			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeStats, w.WorkerID)
 			if err != nil {
 				log.Printf("Stats worker %s error getting job: %v", w.WorkerID, err)
 				time.Sleep(5 * time.Second)

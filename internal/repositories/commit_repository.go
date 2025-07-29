@@ -313,14 +313,19 @@ func (r *CommitRepository) GetDateRangeByRepositoryID(repositoryID string) (time
 func (r *CommitRepository) GetLatestCommitDateByRepositoryID(repositoryID string) (time.Time, error) {
 	query := `SELECT MAX(commit_date) FROM commits WHERE github_repository_id = ?`
 
-	var latestDateStr string
+	var latestDateStr sql.NullString
 	err := r.db.QueryRow(query, repositoryID).Scan(&latestDateStr)
 	if err != nil {
 		return time.Time{}, err
 	}
 
+	// If no commits found, return zero time
+	if !latestDateStr.Valid {
+		return time.Time{}, nil
+	}
+
 	// Parse the date string
-	latestDate, err := time.Parse("2006-01-02 15:04:05-07:00", latestDateStr)
+	latestDate, err := time.Parse("2006-01-02 15:04:05-07:00", latestDateStr.String)
 	if err != nil {
 		return time.Time{}, err
 	}

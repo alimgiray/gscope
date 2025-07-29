@@ -9,19 +9,36 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <link rel="stylesheet" href="/static/css/style.css?v=3">
 </head>
-<body>
-    <nav class="bg-black border-b border-green-500 px-4 py-2">
+<body class="bg-gray-900 text-white min-h-screen">
+    <nav class="bg-gray-800 border-b border-gray-600 px-6 py-4 shadow-lg">
         <div class="flex justify-between items-center">
-            <a href="/" class="text-green-400 text-sm font-mono">GScope</a>
-            <div class="flex space-x-4">
+            <div class="flex items-center gap-3">
+                <a href="/" class="text-green-400 text-lg font-bold font-mono hover:text-green-300 transition-colors duration-200">
+                    <span class="text-green-400">$</span> GScope
+                </a>
                 {{if .User}}
-                <a href="/dashboard" class="text-green-400 text-xs hover:text-green-300">Dashboard</a>
-                <a href="/logout" class="text-green-400 text-xs hover:text-green-300">Logout</a>
+                <span class="text-gray-400 text-sm">|</span>
+                <span class="text-gray-300 text-sm">Welcome, {{.User.Username}}</span>
+                {{end}}
+            </div>
+            <div class="flex items-center gap-4">
+                {{if .User}}
+                <a href="/dashboard" 
+                   class="text-gray-300 hover:text-white text-sm font-medium transition-colors duration-200">
+                    Dashboard
+                </a>
+                <a href="/logout" 
+                   class="text-gray-300 hover:text-red-400 text-sm font-medium transition-colors duration-200">
+                    Logout
+                </a>
                 {{else}}
-                <a href="/login" class="text-green-400 text-xs hover:text-green-300">Login</a>
+                <a href="/login" 
+                   class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+                    Login
+                </a>
                 {{end}}
             </div>
         </div>
     </nav>
-    <main class="px-4 py-2"> 
+    <main class="px-6 py-4 max-w-7xl mx-auto"> 
 {{end}}

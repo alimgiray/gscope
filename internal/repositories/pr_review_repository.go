@@ -3,6 +3,7 @@ package repositories
 import (
 	"database/sql"
 	"sync"
+	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/google/uuid"
@@ -156,16 +157,67 @@ func (r *PRReviewRepository) Delete(id string) error {
 }
 
 func (r *PRReviewRepository) Upsert(review *models.PRReview) error {
-	existing, err := r.GetByGithubReviewID(review.GithubReviewID)
-	if err != nil && err != sql.ErrNoRows {
+	// Use a transaction to handle race conditions
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Try to get existing review within transaction
+	query := `SELECT id, created_at FROM pr_reviews WHERE github_review_id = ?`
+	var existingID string
+	var existingCreatedAt time.Time
+	err = tx.QueryRow(query, review.GithubReviewID).Scan(&existingID, &existingCreatedAt)
+
+	if err == nil {
+		// Review exists, update it
+		review.ID = existingID
+		review.CreatedAt = existingCreatedAt
+		review.UpdatedAt = time.Now()
+
+		updateQuery := `
+			UPDATE pr_reviews SET 
+				repository_id = ?, pull_request_id = ?, github_review_id = ?, reviewer_id = ?,
+				reviewer_login = ?, body = ?, state = ?, author_association = ?, submitted_at = ?, commit_id = ?,
+				html_url = ?, github_created_at = ?, github_updated_at = ?, updated_at = ?
+			WHERE id = ?
+		`
+
+		_, err = tx.Exec(updateQuery,
+			review.RepositoryID, review.PullRequestID, review.GithubReviewID, review.ReviewerID,
+			review.ReviewerLogin, review.Body, review.State, review.AuthorAssociation, review.SubmittedAt, review.CommitID,
+			review.HTMLURL, review.GithubCreatedAt, review.GithubUpdatedAt, review.UpdatedAt,
+			review.ID,
+		)
+	} else if err == sql.ErrNoRows {
+		// Review doesn't exist, create it
+		review.ID = uuid.New().String()
+		now := time.Now()
+		review.CreatedAt = now
+		review.UpdatedAt = now
+
+		insertQuery := `
+			INSERT INTO pr_reviews (
+				id, repository_id, pull_request_id, github_review_id, reviewer_id,
+				reviewer_login, body, state, author_association, submitted_at, commit_id,
+				html_url, github_created_at, github_updated_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+
+		_, err = tx.Exec(insertQuery,
+			review.ID, review.RepositoryID, review.PullRequestID, review.GithubReviewID, review.ReviewerID,
+			review.ReviewerLogin, review.Body, review.State, review.AuthorAssociation, review.SubmittedAt, review.CommitID,
+			review.HTMLURL, review.GithubCreatedAt, review.GithubUpdatedAt, review.CreatedAt, review.UpdatedAt,
+		)
+	} else {
+		// Some other error occurred
 		return err
 	}
 
-	if existing != nil {
-		review.ID = existing.ID
-		review.CreatedAt = existing.CreatedAt
-		return r.Update(review)
+	if err != nil {
+		return err
 	}
 
-	return r.Create(review)
+	return tx.Commit()
 }

@@ -1,8 +1,6 @@
 {{define "project_emails"}}
 {{template "header" .}}
 
-
-
 <div class="card">
     <div class="flex justify-between items-center">
         <div class="card-header">Emails - {{.Project.Name}}</div>
@@ -18,61 +16,64 @@
     <div class="card-header">Emails</div>
     <div class="card-body">
         {{if .Emails}}
-            <div class="space-y-2">
+            <div class="space-y-4">
                 {{range .Emails}}
-                <div class="flex justify-between items-center p-2 border border-gray-600 rounded {{if .IsMerged}}bg-gray-800{{end}}">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-mono">{{.Email}}</span>
-                            {{if .Name}}
-                                <span class="text-xs text-gray-400">({{.Name}})</span>
+                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50 {{if .IsMerged}}bg-gray-700{{end}}">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-sm font-mono font-semibold text-white">{{.Email}}</span>
+                                {{if .Name}}
+                                    <span class="text-xs text-gray-300">({{.Name}})</span>
+                                {{end}}
+                            </div>
+
+                            <div class="space-y-1 text-xs text-gray-400">
+                                {{if .FirstCommit}}
+                                    <p>First commit: {{.FirstCommit.Format "2006-01-02 15:04:05"}}</p>
+                                {{end}}
+                                {{if .LastCommit}}
+                                    <p>Last commit: {{.LastCommit.Format "2006-01-02 15:04:05"}}</p>
+                                {{end}}
+                            </div>
+
+                            {{if .MergedEmails}}
+                            <div class="mt-3 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-600 rounded">
+                                <div class="text-yellow-400 font-semibold mb-2 text-sm">Merged emails:</div>
+                                {{$currentEmail := .Email}}
+                                {{range .MergedEmails}}
+                                    <div class="flex items-center justify-between gap-2 mb-2">
+                                        <span class="font-mono text-xs text-yellow-300">{{.}}</span>
+                                        <button 
+                                            class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                            title="Detach {{.}} from {{$currentEmail}}"
+                                            data-project-id="{{$.Project.ID}}"
+                                            data-target-email="{{$currentEmail}}"
+                                            data-source-email="{{.}}"
+                                            onclick="detachEmailFromButton(this)">
+                                            Detach
+                                        </button>
+                                    </div>
+                                {{end}}
+                            </div>
                             {{end}}
                         </div>
-
-                        {{if .FirstCommit}}
-                            <div class="text-xs text-gray-400 mt-1">
-                                First commit: {{.FirstCommit.Format "2006-01-02 15:04:05"}}
-                            </div>
-                        {{end}}
-                        {{if .LastCommit}}
-                            <div class="text-xs text-gray-400 mt-1">
-                                Last commit: {{.LastCommit.Format "2006-01-02 15:04:05"}}
-                            </div>
-                        {{end}}
-                                                            {{if .MergedEmails}}
-                                        <div class="text-xs text-gray-400 mt-1">
-                                            <span class="text-yellow-400">Merged emails:</span>
-                                            {{$currentEmail := .Email}}
-                                            {{range .MergedEmails}}
-                                                <div class="flex items-center gap-1 mt-1">
-                                                    <span class="font-mono text-xs">{{.}}</span>
-                                                    <button 
-                                                        class="text-xs bg-red-600 hover:bg-red-700 text-white px-1 py-0.5 rounded" 
-                                                        title="Detach {{.}} from {{$currentEmail}}"
-                                                        data-project-id="{{$.Project.ID}}"
-                                                        data-target-email="{{$currentEmail}}"
-                                                        data-source-email="{{.}}"
-                                                        onclick="detachEmailFromButton(this)">
-                                                        ×
-                                                    </button>
-                                                </div>
-                                            {{end}}
-                                        </div>
+                        <div class="flex flex-col gap-2 ml-4">
+                            <select class="text-xs bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white" onchange="updateMergeTarget('{{.Email}}', this.value)">
+                                <option value="">Select email to merge...</option>
+                                {{$sortedEmails := index $.EmailSortedEmails .Email}}
+                                {{range $sortedEmails}}
+                                    {{if not (index $.AssociatedEmails .)}}
+                                        <option value="{{.}}">{{.}}</option>
                                     {{end}}
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <select class="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1" onchange="updateMergeTarget('{{.Email}}', this.value)">
-                            <option value="">Select email to merge into this one...</option>
-                            {{$sortedEmails := index $.EmailSortedEmails .Email}}
-                            {{range $sortedEmails}}
-                                {{if not (index $.AssociatedEmails .)}}
-                                    <option value="{{.}}">{{.}}</option>
                                 {{end}}
-                            {{end}}
-                        </select>
-                        <button onclick="mergeEmail('{{$.Project.ID}}', '{{.Email}}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded" disabled id="merge-btn-{{.Email}}">
-                            Merge Here
-                        </button>
+                            </select>
+                            <button onclick="mergeEmail('{{$.Project.ID}}', '{{.Email}}')" 
+                                    class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                    disabled id="merge-btn-{{.Email}}">
+                                Merge Here
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {{end}}

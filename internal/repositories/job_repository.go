@@ -51,7 +51,7 @@ func (r *JobRepository) GetByID(id string) (*models.Job, error) {
 	defer r.mu.RUnlock()
 
 	query := `
-		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, created_at, updated_at
+		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, worker_id, created_at, updated_at
 		FROM jobs WHERE id = ?
 	`
 
@@ -66,6 +66,7 @@ func (r *JobRepository) GetByID(id string) (*models.Job, error) {
 		&job.DependsOn,
 		&job.StartedAt,
 		&job.CompletedAt,
+		&job.WorkerID,
 		&job.CreatedAt,
 		&job.UpdatedAt,
 	)
@@ -83,7 +84,7 @@ func (r *JobRepository) GetByProjectID(projectID string) ([]*models.Job, error) 
 	defer r.mu.RUnlock()
 
 	query := `
-		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, created_at, updated_at
+		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, worker_id, created_at, updated_at
 		FROM jobs 
 		WHERE project_id = ?
 		ORDER BY created_at DESC
@@ -108,6 +109,7 @@ func (r *JobRepository) GetByProjectID(projectID string) ([]*models.Job, error) 
 			&job.DependsOn,
 			&job.StartedAt,
 			&job.CompletedAt,
+			&job.WorkerID,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		)
@@ -126,7 +128,7 @@ func (r *JobRepository) GetPendingJobs() ([]*models.Job, error) {
 	defer r.mu.RUnlock()
 
 	query := `
-		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, created_at, updated_at
+		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, worker_id, created_at, updated_at
 		FROM jobs 
 		WHERE status = ?
 		ORDER BY created_at ASC
@@ -151,6 +153,7 @@ func (r *JobRepository) GetPendingJobs() ([]*models.Job, error) {
 			&job.DependsOn,
 			&job.StartedAt,
 			&job.CompletedAt,
+			&job.WorkerID,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		)
@@ -169,7 +172,7 @@ func (r *JobRepository) GetByProjectRepositoryID(projectRepositoryID string) ([]
 	defer r.mu.RUnlock()
 
 	query := `
-		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, created_at, updated_at
+		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, worker_id, created_at, updated_at
 		FROM jobs 
 		WHERE project_repository_id = ?
 		ORDER BY created_at DESC
@@ -194,6 +197,7 @@ func (r *JobRepository) GetByProjectRepositoryID(projectRepositoryID string) ([]
 			&job.DependsOn,
 			&job.StartedAt,
 			&job.CompletedAt,
+			&job.WorkerID,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		)
@@ -206,9 +210,9 @@ func (r *JobRepository) GetByProjectRepositoryID(projectRepositoryID string) ([]
 	return jobs, nil
 }
 
-// GetNextPendingJob retrieves the next pending job of a specific type (FIFO)
-// This method is thread-safe and marks the job as in-progress
-func (r *JobRepository) GetNextPendingJob(jobType models.JobType) (*models.Job, error) {
+// GetNextPendingJob retrieves the next pending or in-progress job of a specific type (FIFO)
+// This method is thread-safe and marks the job as in-progress if it was pending
+func (r *JobRepository) GetNextPendingJob(jobType models.JobType, workerID string) (*models.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -219,20 +223,91 @@ func (r *JobRepository) GetNextPendingJob(jobType models.JobType) (*models.Job, 
 	}
 	defer tx.Rollback()
 
-	// Get the oldest pending job of the specified type that has no dependencies or completed dependencies
+	// First, try to find and claim a pending job atomically
+	// Use a more aggressive approach to prevent race conditions
+	claimQuery := `
+		UPDATE jobs 
+		SET status = ?, started_at = ?, updated_at = ?, worker_id = ?
+		WHERE id = (
+			SELECT j.id
+			FROM jobs j
+			LEFT JOIN jobs dep ON j.depends_on = dep.id
+			WHERE j.status = ? AND j.job_type = ?
+			AND (j.depends_on IS NULL OR dep.status IN (?, ?))
+			ORDER BY j.created_at ASC
+			LIMIT 1
+		)
+	`
+
+	result, err := tx.Exec(claimQuery,
+		models.JobStatusInProgress, time.Now(), time.Now(), workerID,
+		models.JobStatusPending, jobType, models.JobStatusCompleted, models.JobStatusFailed,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if we actually updated a row
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	if rowsAffected > 0 {
+		// We successfully claimed a pending job, now get its details
+		// Make sure we only get the job we just claimed by filtering by worker_id
+		query := `
+			SELECT j.id, j.project_id, j.project_repository_id, j.job_type, j.status, j.error_message, 
+			       j.depends_on, j.started_at, j.completed_at, j.worker_id, j.created_at, j.updated_at
+			FROM jobs j
+			WHERE j.status = ? AND j.job_type = ? AND j.worker_id = ?
+			ORDER BY j.created_at ASC
+			LIMIT 1
+		`
+
+		job := &models.Job{}
+		err = tx.QueryRow(query, models.JobStatusInProgress, jobType, workerID).Scan(
+			&job.ID,
+			&job.ProjectID,
+			&job.ProjectRepositoryID,
+			&job.JobType,
+			&job.Status,
+			&job.ErrorMessage,
+			&job.DependsOn,
+			&job.StartedAt,
+			&job.CompletedAt,
+			&job.WorkerID,
+			&job.CreatedAt,
+			&job.UpdatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// Commit the transaction
+		if err = tx.Commit(); err != nil {
+			return nil, err
+		}
+
+		return job, nil
+	}
+
+	// No pending jobs found, try to find in-progress jobs that belong to this worker
 	query := `
 		SELECT j.id, j.project_id, j.project_repository_id, j.job_type, j.status, j.error_message, 
-		       j.depends_on, j.started_at, j.completed_at, j.created_at, j.updated_at
+		       j.depends_on, j.started_at, j.completed_at, j.worker_id, j.created_at, j.updated_at
 		FROM jobs j
 		LEFT JOIN jobs dep ON j.depends_on = dep.id
-		WHERE j.status = ? AND j.job_type = ?
-		AND (j.depends_on IS NULL OR dep.status = ?)
+		WHERE j.status = ? AND j.job_type = ? AND j.worker_id = ?
+		AND (j.depends_on IS NULL OR dep.status IN (?, ?))
 		ORDER BY j.created_at ASC
 		LIMIT 1
 	`
 
 	job := &models.Job{}
-	err = tx.QueryRow(query, models.JobStatusPending, jobType, models.JobStatusCompleted).Scan(
+	err = tx.QueryRow(query, models.JobStatusInProgress, jobType, workerID, models.JobStatusCompleted, models.JobStatusFailed).Scan(
 		&job.ID,
 		&job.ProjectID,
 		&job.ProjectRepositoryID,
@@ -242,27 +317,19 @@ func (r *JobRepository) GetNextPendingJob(jobType models.JobType) (*models.Job, 
 		&job.DependsOn,
 		&job.StartedAt,
 		&job.CompletedAt,
+		&job.WorkerID,
 		&job.CreatedAt,
 		&job.UpdatedAt,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // No pending jobs found
+			// Commit the transaction even if no jobs found
+			if err = tx.Commit(); err != nil {
+				return nil, err
+			}
+			return nil, nil // No pending or in-progress jobs found
 		}
-		return nil, err
-	}
-
-	// Mark the job as in-progress
-	job.MarkStarted()
-	updateQuery := `
-		UPDATE jobs 
-		SET status = ?, started_at = ?, updated_at = ?
-		WHERE id = ?
-	`
-
-	_, err = tx.Exec(updateQuery, job.Status, job.StartedAt, time.Now(), job.ID)
-	if err != nil {
 		return nil, err
 	}
 
@@ -282,7 +349,7 @@ func (r *JobRepository) Update(job *models.Job) error {
 	query := `
 		UPDATE jobs 
 		SET project_id = ?, project_repository_id = ?, job_type = ?, status = ?, error_message = ?, 
-		    depends_on = ?, started_at = ?, completed_at = ?, updated_at = ?
+		    depends_on = ?, started_at = ?, completed_at = ?, worker_id = ?, updated_at = ?
 		WHERE id = ?
 	`
 
@@ -295,7 +362,8 @@ func (r *JobRepository) Update(job *models.Job) error {
 		job.DependsOn,
 		job.StartedAt,
 		job.CompletedAt,
-		time.Now(),
+		job.WorkerID,
+		job.UpdatedAt,
 		job.ID,
 	)
 	return err
@@ -327,7 +395,7 @@ func (r *JobRepository) GetJobsByDependency(dependsOnJobID string) ([]*models.Jo
 	defer r.mu.RUnlock()
 
 	query := `
-		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, created_at, updated_at
+		SELECT id, project_id, project_repository_id, job_type, status, error_message, depends_on, started_at, completed_at, worker_id, created_at, updated_at
 		FROM jobs 
 		WHERE depends_on = ?
 		ORDER BY created_at ASC
@@ -352,6 +420,7 @@ func (r *JobRepository) GetJobsByDependency(dependsOnJobID string) ([]*models.Jo
 			&job.DependsOn,
 			&job.StartedAt,
 			&job.CompletedAt,
+			&job.WorkerID,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		)
@@ -364,22 +433,22 @@ func (r *JobRepository) GetJobsByDependency(dependsOnJobID string) ([]*models.Jo
 	return jobs, nil
 }
 
-// GetPendingJobsWithDependencies retrieves pending jobs that have no dependencies or whose dependencies are completed
+// GetPendingJobsWithDependencies retrieves pending jobs that have no dependencies or whose dependencies are in final state
 func (r *JobRepository) GetPendingJobsWithDependencies() ([]*models.Job, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	query := `
 		SELECT j.id, j.project_id, j.project_repository_id, j.job_type, j.status, j.error_message, 
-		       j.depends_on, j.started_at, j.completed_at, j.created_at, j.updated_at
+		       j.depends_on, j.started_at, j.completed_at, j.worker_id, j.created_at, j.updated_at
 		FROM jobs j
 		LEFT JOIN jobs dep ON j.depends_on = dep.id
 		WHERE j.status = ? 
-		AND (j.depends_on IS NULL OR dep.status = ?)
+		AND (j.depends_on IS NULL OR dep.status IN (?, ?))
 		ORDER BY j.created_at ASC
 	`
 
-	rows, err := r.db.Query(query, models.JobStatusPending, models.JobStatusCompleted)
+	rows, err := r.db.Query(query, models.JobStatusPending, models.JobStatusCompleted, models.JobStatusFailed)
 	if err != nil {
 		return nil, err
 	}
@@ -398,6 +467,7 @@ func (r *JobRepository) GetPendingJobsWithDependencies() ([]*models.Job, error) 
 			&job.DependsOn,
 			&job.StartedAt,
 			&job.CompletedAt,
+			&job.WorkerID,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		)

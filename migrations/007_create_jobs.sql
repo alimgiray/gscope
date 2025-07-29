@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     depends_on TEXT,
     started_at DATETIME,
     completed_at DATETIME,
+    worker_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -22,6 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_depends_on ON jobs(depends_on); 
+CREATE INDEX IF NOT EXISTS idx_jobs_worker_id ON jobs(worker_id); 
 
 -- Create trigger to update updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_jobs_updated_at

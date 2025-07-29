@@ -37,6 +37,7 @@ type Job struct {
 	DependsOn           *string    `json:"depends_on"`
 	StartedAt           *time.Time `json:"started_at"`
 	CompletedAt         *time.Time `json:"completed_at"`
+	WorkerID            *string    `json:"worker_id"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 }

@@ -2,10 +2,10 @@ package workers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
@@ -75,7 +75,7 @@ func (w *PullRequestWorker) Start(ctx context.Context) error {
 			return nil
 		default:
 			// Try to get a pending pull request job
-			job, err := w.jobRepo.GetNextPendingJob(models.JobTypePullRequest)
+			job, err := w.jobRepo.GetNextPendingJob(models.JobTypePullRequest, w.WorkerID)
 			if err != nil {
 				log.Printf("Pull request worker %s error getting job: %v", w.WorkerID, err)
 				time.Sleep(5 * time.Second)
@@ -294,6 +294,14 @@ func (w *PullRequestWorker) ProcessJob(ctx context.Context, job *models.Job) err
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
 
+	// Update last_fetched timestamp for the project repository if this was a repository-specific job
+	if job.ProjectRepositoryID != nil {
+		now := time.Now()
+		if err := w.projectRepositoryRepo.UpdateLastFetched(*job.ProjectRepositoryID, &now); err != nil {
+			log.Printf("Warning: failed to update last_fetched for project repository %s: %v", *job.ProjectRepositoryID, err)
+		}
+	}
+
 	log.Printf("Pull request job completed. Processed %d PRs, %d reviews, %d people", totalPRs, totalReviews, totalPeople)
 	return nil
 }
@@ -322,7 +330,9 @@ func (w *PullRequestWorker) fetchPullRequests(ctx context.Context, client *githu
 	}
 
 	for {
-		prs, resp, err := client.PullRequests.List(ctx, owner, repo, opts)
+		prs, resp, err := w.makeGitHubRequestWithRetry(ctx, func() ([]*github.PullRequest, *github.Response, error) {
+			return client.PullRequests.List(ctx, owner, repo, opts)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +381,9 @@ func (w *PullRequestWorker) fetchExistingOpenPullRequests(ctx context.Context, c
 	}
 
 	for {
-		prs, resp, err := client.PullRequests.List(ctx, owner, repo, opts)
+		prs, resp, err := w.makeGitHubRequestWithRetry(ctx, func() ([]*github.PullRequest, *github.Response, error) {
+			return client.PullRequests.List(ctx, owner, repo, opts)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -403,7 +415,9 @@ func (w *PullRequestWorker) fetchPullRequestReviews(ctx context.Context, client 
 	}
 
 	for {
-		reviews, resp, err := client.PullRequests.ListReviews(ctx, owner, repo, prNumber, opts)
+		reviews, resp, err := w.makeGitHubRequestWithRetryReviews(ctx, func() ([]*github.PullRequestReview, *github.Response, error) {
+			return client.PullRequests.ListReviews(ctx, owner, repo, prNumber, opts)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -533,10 +547,31 @@ func (w *PullRequestWorker) processPullRequestReview(ctx context.Context, github
 		}
 	}
 
+	// Get the pull request from our database using the GitHub PR ID
+	// Try a few times in case the PR was just created and hasn't been committed yet
+	var pullRequest *models.PullRequest
+	var err error
+	for i := 0; i < 3; i++ {
+		pullRequest, err = w.pullRequestRepo.GetByGithubPRID(int(pullRequestID))
+		if err == nil {
+			break
+		}
+		if err == sql.ErrNoRows {
+			if i < 2 { // Don't log on the last attempt
+				log.Printf("Warning: Pull request with GitHub PR ID %d not found in database, retrying...", pullRequestID)
+				time.Sleep(100 * time.Millisecond) // Small delay before retry
+				continue
+			}
+			log.Printf("Warning: Pull request with GitHub PR ID %d not found in database after retries, skipping review", pullRequestID)
+			return nil // Skip this review if the PR doesn't exist yet
+		}
+		return fmt.Errorf("failed to get pull request with GitHub PR ID %d: %w", pullRequestID, err)
+	}
+
 	// Convert GitHub review to our model
 	review := &models.PRReview{
 		RepositoryID:   repositoryID,
-		PullRequestID:  strconv.FormatInt(pullRequestID, 10), // Convert to string since our ID is TEXT
+		PullRequestID:  pullRequest.ID, // Use the database ID, not the GitHub PR ID
 		GithubReviewID: int(githubReview.GetID()),
 		ReviewerID:     int(githubReview.User.GetID()),
 		ReviewerLogin:  githubReview.User.GetLogin(),
@@ -679,4 +714,102 @@ func (w *PullRequestWorker) createAuthenticatedClient(token string) *github.Clie
 	)
 	tc := oauth2.NewClient(ctx, ts)
 	return github.NewClient(tc)
+}
+
+// makeGitHubRequestWithRetry performs a GitHub API request with rate limit handling and exponential backoff
+func (w *PullRequestWorker) makeGitHubRequestWithRetry(ctx context.Context, requestFunc func() ([]*github.PullRequest, *github.Response, error)) ([]*github.PullRequest, *github.Response, error) {
+	maxRetries := 5
+	baseDelay := time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		result, resp, err := requestFunc()
+
+		if err == nil {
+			return result, resp, nil
+		}
+
+		// Check if it's a rate limit error
+		if resp != nil && resp.StatusCode == 403 {
+			// Check if we have rate limit info in headers
+			if resetTime := resp.Header.Get("X-RateLimit-Reset"); resetTime != "" {
+				if resetUnix, parseErr := time.Parse("2006-01-02 15:04:05", resetTime); parseErr == nil {
+					waitTime := time.Until(resetUnix)
+					if waitTime > 0 {
+						log.Printf("Rate limit exceeded, waiting until %s (%.0f seconds)", resetUnix.Format("2006-01-02 15:04:05"), waitTime.Seconds())
+						time.Sleep(waitTime)
+						continue
+					}
+				}
+			}
+
+			// If we can't parse the reset time, use exponential backoff
+			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			log.Printf("Rate limit exceeded (attempt %d/%d), waiting %v before retry", attempt, maxRetries, waitTime)
+			time.Sleep(waitTime)
+			continue
+		}
+
+		// For other errors, use exponential backoff
+		if attempt < maxRetries {
+			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			log.Printf("GitHub API request failed (attempt %d/%d): %v, waiting %v before retry", attempt, maxRetries, err, waitTime)
+			time.Sleep(waitTime)
+			continue
+		}
+
+		// Last attempt failed
+		return result, resp, err
+	}
+
+	// This should never be reached, but just in case
+	return nil, nil, fmt.Errorf("all retry attempts failed")
+}
+
+// makeGitHubRequestWithRetryReviews performs a GitHub API request for reviews with rate limit handling and exponential backoff
+func (w *PullRequestWorker) makeGitHubRequestWithRetryReviews(ctx context.Context, requestFunc func() ([]*github.PullRequestReview, *github.Response, error)) ([]*github.PullRequestReview, *github.Response, error) {
+	maxRetries := 5
+	baseDelay := time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		result, resp, err := requestFunc()
+
+		if err == nil {
+			return result, resp, nil
+		}
+
+		// Check if it's a rate limit error
+		if resp != nil && resp.StatusCode == 403 {
+			// Check if we have rate limit info in headers
+			if resetTime := resp.Header.Get("X-RateLimit-Reset"); resetTime != "" {
+				if resetUnix, parseErr := time.Parse("2006-01-02 15:04:05", resetTime); parseErr == nil {
+					waitTime := time.Until(resetUnix)
+					if waitTime > 0 {
+						log.Printf("Rate limit exceeded, waiting until %s (%.0f seconds)", resetUnix.Format("2006-01-02 15:04:05"), waitTime.Seconds())
+						time.Sleep(waitTime)
+						continue
+					}
+				}
+			}
+
+			// If we can't parse the reset time, use exponential backoff
+			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			log.Printf("Rate limit exceeded (attempt %d/%d), waiting %v before retry", attempt, maxRetries, waitTime)
+			time.Sleep(waitTime)
+			continue
+		}
+
+		// For other errors, use exponential backoff
+		if attempt < maxRetries {
+			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			log.Printf("GitHub API request failed (attempt %d/%d): %v, waiting %v before retry", attempt, maxRetries, err, waitTime)
+			time.Sleep(waitTime)
+			continue
+		}
+
+		// Last attempt failed
+		return result, resp, err
+	}
+
+	// This should never be reached, but just in case
+	return nil, nil, fmt.Errorf("all retry attempts failed")
 }

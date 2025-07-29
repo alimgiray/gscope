@@ -213,6 +213,7 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/settings/folders/:folder_id/delete", projectHandler.DeleteExcludedFolder)
 		projects.POST("/:id/settings/update-settings", projectHandler.UpdateProjectUpdateSettings)
 		projects.POST("/:id/settings/delete", projectHandler.DeleteProject)
+		projects.POST("/jobs/:job_id/retry", projectHandler.RetryFailedJob)
 	}
 
 	// Health check endpoint

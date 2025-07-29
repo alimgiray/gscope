@@ -41,7 +41,7 @@ func (w *CloneWorker) Start(ctx context.Context) error {
 			return nil
 		default:
 			// Try to get a pending clone job
-			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeClone)
+			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeClone, w.WorkerID)
 			if err != nil {
 				log.Printf("Clone worker %s error getting job: %v", w.WorkerID, err)
 				time.Sleep(5 * time.Second)
