@@ -18,28 +18,36 @@
     
     <!-- Toast Container -->
     <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
-    <div class="mt-4 flex gap-2">
+    <div class="mt-4 flex gap-3">
         <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
-            <button type="submit" class="btn" style="background: #059669; color: white;">Fetch Repositories</button>
+            <button type="submit" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+                Fetch Repositories
+            </button>
         </form>
-        <button class="btn" style="background: #f59e0b; color: white;" onclick="trackAllRepositories('{{.Project.ID}}')">
+        <button class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="trackAllRepositories('{{.Project.ID}}')">
             Track All
         </button>
-        <button class="btn" style="background: #7c3aed; color: white;" onclick="cloneAllRepositories('{{.Project.ID}}')">
+        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="cloneAllRepositories('{{.Project.ID}}')">
             Clone All
         </button>
-        <button class="btn" style="background: #10b981; color: white;" onclick="fetchAllRepositories('{{.Project.ID}}')">
+        <button class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="fetchAllRepositories('{{.Project.ID}}')">
             Fetch Github All
         </button>
-        <button class="btn" style="background: #3b82f6; color: white;" onclick="analyzeAllRepositories('{{.Project.ID}}')">
+        <button class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="analyzeAllRepositories('{{.Project.ID}}')">
             Analyze All
         </button>
-        <button class="btn" style="background: #8b5cf6; color: white;" onclick="updateAllRepositories('{{.Project.ID}}')">
+        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="updateAllRepositories('{{.Project.ID}}')">
             Update All
         </button>
-        <a href="/projects/{{.Project.ID}}/emails" class="btn" style="background: #dc2626; color: white;">Emails</a>
-        <a href="/projects/{{.Project.ID}}/people" class="btn" style="background: #2563eb; color: white;">People</a>
-        <a href="/projects/{{.Project.ID}}/reports" class="btn" style="background: #059669; color: white;">Reports</a>
+        <a href="/projects/{{.Project.ID}}/emails" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+            Emails
+        </a>
+        <a href="/projects/{{.Project.ID}}/people" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+            People
+        </a>
+        <a href="/projects/{{.Project.ID}}/reports" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+            Reports
+        </a>
     </div>
 </div>
 

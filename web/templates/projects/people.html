@@ -58,7 +58,7 @@
                                     </div>
                                 </div>
                             {{else}}
-                                <div class="mt-3 p-3 bg-gray-900 bg-opacity-20 border border-gray-600 rounded">
+                                <div class="mt-3 p-3 bg-gray-800 bg-opacity-50 border border-gray-600 rounded">
                                     <div class="text-gray-400 font-semibold mb-2 text-sm">No email associated</div>
                                 </div>
                             {{end}}
@@ -71,9 +71,7 @@
                                 <option value="">Select email to associate...</option>
                                 {{$sortedEmails := index $.PersonSortedEmails .ID}}
                                 {{range $sortedEmails}}
-                                    {{if not (index $.AssociatedEmails .)}}
-                                        <option value="{{.}}">{{.}}</option>
-                                    {{end}}
+                                    <option value="{{.}}">{{.}}</option>
                                 {{end}}
                             </select>
                             <button onclick="associateEmail('{{$.Project.ID}}', '{{.ID}}')" 

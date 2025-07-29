@@ -7,7 +7,7 @@
         <a href="/projects/{{.Project.ID}}/reports" class="text-green-400 hover:text-green-300 text-xs">← Back to Reports</a>
     </div>
     {{if .Project.Description}}
-    <p>{{.Project.Description}}</p>
+    <p class="text-gray-300 mb-2">{{.Project.Description}}</p>
     {{end}}
     <div class="text-xs text-gray-400 mt-2">
         Weekly reports and analytics
@@ -19,12 +19,14 @@
     <div class="card-header">Select Week</div>
     <div class="card-body">
         <form method="GET" class="flex gap-4 items-center">
-            <select name="week" class="bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
+            <select name="week" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
                 {{range .Weeks}}
                     <option value="{{.}}" {{if eq . $.SelectedWeek}}selected{{end}}>{{.}}</option>
                 {{end}}
             </select>
-            <button type="submit" class="btn" style="background: #8b5cf6; color: white;">View Statistics</button>
+            <button type="submit" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+                View Statistics
+            </button>
         </form>
     </div>
 </div>
@@ -36,37 +38,37 @@
         {{if .WeeklyStats}}
             <div class="space-y-4">
                 {{range .WeeklyStats}}
-                <div class="border border-gray-600 rounded p-4">
+                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50">
                     <div class="flex justify-between items-start">
                         <div class="flex-1">
-                            <div class="flex items-center gap-2">
-                                <span class="text-lg font-semibold">{{.GitHubPerson.Username}}</span>
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="text-lg font-semibold text-white">{{.GitHubPerson.Username}}</span>
                                 {{if .GitHubPerson.DisplayName}}
-                                    <span class="text-sm text-gray-400">({{.GitHubPerson.DisplayName}})</span>
+                                    <span class="text-sm text-gray-300">({{.GitHubPerson.DisplayName}})</span>
                                 {{end}}
                             </div>
-                            <div class="mt-2 grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
-                                <div class="text-center">
+                            <div class="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                                <div class="text-center p-3 bg-gray-700 rounded">
                                     <div class="text-2xl font-bold text-green-400">{{.TotalScore}}</div>
                                     <div class="text-xs text-gray-400">Score</div>
                                 </div>
-                                <div class="text-center">
+                                <div class="text-center p-3 bg-gray-700 rounded">
                                     <div class="text-lg font-semibold text-blue-400">{{.TotalCommits}}</div>
                                     <div class="text-xs text-gray-400">Commits</div>
                                 </div>
-                                <div class="text-center">
+                                <div class="text-center p-3 bg-gray-700 rounded">
                                     <div class="text-lg font-semibold text-green-400">{{.TotalAdditions}}</div>
                                     <div class="text-xs text-gray-400">Additions</div>
                                 </div>
-                                <div class="text-center">
+                                <div class="text-center p-3 bg-gray-700 rounded">
                                     <div class="text-lg font-semibold text-red-400">{{.TotalDeletions}}</div>
                                     <div class="text-xs text-gray-400">Deletions</div>
                                 </div>
-                                <div class="text-center">
+                                <div class="text-center p-3 bg-gray-700 rounded">
                                     <div class="text-lg font-semibold text-purple-400">{{.TotalPullRequests}}</div>
                                     <div class="text-xs text-gray-400">Pull Requests</div>
                                 </div>
-                                <div class="text-center">
+                                <div class="text-center p-3 bg-gray-700 rounded">
                                     <div class="text-lg font-semibold text-yellow-400">{{.TotalComments}}</div>
                                     <div class="text-xs text-gray-400">Comments</div>
                                 </div>

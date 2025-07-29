@@ -1423,6 +1423,13 @@ func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
 
 	// Create sorted emails for each row's dropdown
 	emailSortedEmails := make(map[string][]string)
+
+	// Create a set of target emails (emails that have other emails merged into them)
+	targetEmails := make(map[string]bool)
+	for _, merge := range mergedEmails {
+		targetEmails[merge] = true
+	}
+
 	for _, email := range emails {
 		// Extract all email addresses for this dropdown (excluding current email)
 		var emailAddresses []string
@@ -1436,10 +1443,13 @@ func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
 		emailUsername := strings.Split(email.Email, "@")[0]
 		sortedEmails := h.textSimilarityService.SortEmailsBySimilarity(emailAddresses, emailUsername)
 
-		// Extract just the email addresses in sorted order
+		// Extract just the email addresses in sorted order, excluding target emails
 		var sortedEmailAddresses []string
 		for _, emailSimilarity := range sortedEmails {
-			sortedEmailAddresses = append(sortedEmailAddresses, emailSimilarity.Email)
+			// Skip if this email is a target email (has other emails merged into it)
+			if !targetEmails[emailSimilarity.Email] {
+				sortedEmailAddresses = append(sortedEmailAddresses, emailSimilarity.Email)
+			}
 		}
 
 		emailSortedEmails[email.Email] = sortedEmailAddresses
@@ -1560,7 +1570,7 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 		// Sort emails by similarity to GitHub username
 		sortedEmails := h.textSimilarityService.SortEmailsBySimilarity(emailAddresses, person.Username)
 
-		// Extract just the email addresses in sorted order, excluding already associated emails
+		// Extract just the email addresses in sorted order, excluding emails associated with any GitHub person
 		var sortedEmailAddresses []string
 		for _, emailSimilarity := range sortedEmails {
 			// Skip if this email is already associated with any GitHub person
