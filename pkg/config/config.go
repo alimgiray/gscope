@@ -58,12 +58,20 @@ func Load() error {
 		GitHub: GitHubConfig{
 			ClientID:     getEnv("GITHUB_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
-			CallbackURL:  getEnv("GITHUB_CALLBACK_URL", ""),
+			CallbackURL:  getEnv("GITHUB_CALLBACK_URL", "http://localhost:8080/auth/github/callback"),
 		},
 		Session: SessionConfig{
-			Secret: getEnv("SESSION_SECRET", "default-secret-key"),
+			Secret: getEnv("SESSION_SECRET", "default-secret-key-change-in-production"),
 		},
 	}
+
+	// Log configuration (without sensitive data)
+	log.Printf("Configuration loaded:")
+	log.Printf("  Server Port: %s", AppConfig.Server.Port)
+	log.Printf("  Gin Mode: %s", AppConfig.Server.Mode)
+	log.Printf("  Database Path: %s", AppConfig.Database.Path)
+	log.Printf("  GitHub Client ID: %s", maskString(AppConfig.GitHub.ClientID))
+	log.Printf("  GitHub Callback URL: %s", AppConfig.GitHub.CallbackURL)
 
 	return nil
 }
@@ -84,4 +92,15 @@ func getEnvAsInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// maskString masks sensitive strings for logging
+func maskString(s string) string {
+	if s == "" {
+		return "<not-set>"
+	}
+	if len(s) <= 4 {
+		return "****"
+	}
+	return s[:4] + "****"
 }

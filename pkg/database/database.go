@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/alimgiray/gscope/pkg/config"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -17,7 +18,7 @@ func Init() error {
 	var err error
 
 	// Open SQLite database (creates if doesn't exist)
-	DB, err = sql.Open("sqlite3", "./gscope.db?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=10000&_temp_store=MEMORY&_foreign_keys=ON&_busy_timeout=30000")
+	DB, err = sql.Open("sqlite3", config.AppConfig.Database.Path+"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=10000&_temp_store=MEMORY&_foreign_keys=ON&_busy_timeout=30000")
 	if err != nil {
 		return err
 	}

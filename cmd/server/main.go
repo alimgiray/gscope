@@ -20,13 +20,13 @@ import (
 )
 
 func main() {
-	// Set Gin mode
-	gin.SetMode(gin.ReleaseMode)
-
 	// Load configuration
 	if err := config.Load(); err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
+	// Set Gin mode from config
+	gin.SetMode(config.AppConfig.Server.Mode)
 
 	// Initialize database
 	if err := database.Init(); err != nil {
@@ -131,13 +131,13 @@ func main() {
 
 	// Setup server
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + config.AppConfig.Server.Port,
 		Handler: router,
 	}
 
 	// Graceful shutdown
 	go func() {
-		log.Printf("Server starting on :8080")
+		log.Printf("Server starting on :%s", config.AppConfig.Server.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
 		}
