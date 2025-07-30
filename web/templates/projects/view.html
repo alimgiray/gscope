@@ -20,34 +20,112 @@
     <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
     <div class="mt-4 flex gap-3">
         <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
-            <button type="submit" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+            <button type="submit" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="Import your GitHub repositories into this project">
                 Fetch Repositories
             </button>
         </form>
-        <button class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="trackAllRepositories('{{.Project.ID}}')">
+        <button class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="trackAllRepositories('{{.Project.ID}}')" title="Start tracking all repositories in this project">
             Track All
         </button>
-        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="cloneAllRepositories('{{.Project.ID}}')">
+        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="cloneAllRepositories('{{.Project.ID}}')" title="Clone all repositories to local storage">
             Clone All
         </button>
-        <button class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="fetchAllRepositories('{{.Project.ID}}')">
+        <button class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="fetchAllRepositories('{{.Project.ID}}')" title="Fetch latest data from GitHub for all repositories">
             Fetch Github All
         </button>
-        <button class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="analyzeAllRepositories('{{.Project.ID}}')">
+        <button class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="analyzeAllRepositories('{{.Project.ID}}')" title="Analyze all repositories for statistics">
             Analyze All
         </button>
-        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="updateAllRepositories('{{.Project.ID}}')">
+        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="updateAllRepositories('{{.Project.ID}}')" title="Update all repositories (fetch, analyze, etc.)">
             Update All
         </button>
-        <a href="/projects/{{.Project.ID}}/emails" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+        <a href="/projects/{{.Project.ID}}/emails" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="Manage and merge contributor emails">
             Emails
         </a>
-        <a href="/projects/{{.Project.ID}}/people" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+        <a href="/projects/{{.Project.ID}}/people" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="View and associate GitHub users with emails">
             People
         </a>
-        <a href="/projects/{{.Project.ID}}/reports" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
+        <a href="/projects/{{.Project.ID}}/reports" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="View analytics and reports for this project">
             Reports
         </a>
+    </div>
+</div>
+
+<!-- Help Section -->
+<div class="card mt-4">
+    <div class="card-header cursor-pointer" onclick="toggleHelpSection()" id="help-header">
+        <div class="flex items-center justify-between">
+            <span>📚 How GScope Works</span>
+            <span id="help-toggle" class="text-gray-400">▼</span>
+        </div>
+    </div>
+    <div class="card-body hidden" id="help-content">
+        <div class="space-y-4 text-sm text-gray-300">
+            <div>
+                <h4 class="font-semibold text-white mb-2">Getting Started with GScope</h4>
+                <p class="mb-3">GScope analyzes your GitHub repositories to provide insights on commits, pull requests, contributors, and code statistics. Here's how to set it up:</p>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</div>
+                    <div>
+                        <h5 class="font-semibold text-white">Fetch & Track Repositories</h5>
+                        <p>Click "Fetch Repositories" to import your GitHub repositories, then use "Track All" to start monitoring them for analysis.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</div>
+                    <div>
+                        <h5 class="font-semibold text-white">Clone Repositories</h5>
+                        <p>Use "Clone All" to download repositories to local storage. This is required for analyzing commit history and file changes.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
+                    <div>
+                        <h5 class="font-semibold text-white">Fetch GitHub Data</h5>
+                        <p>Use "Fetch Github All" to get the latest pull requests, reviews, and contributor information from GitHub.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">4</div>
+                    <div>
+                        <h5 class="font-semibold text-white">Manage Emails</h5>
+                        <p>Go to the "Emails" section to merge contributor email addresses. This helps identify the same person across different email addresses.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">5</div>
+                    <div>
+                        <h5 class="font-semibold text-white">Associate People</h5>
+                        <p>Visit the "People" section to link GitHub usernames with email addresses. This connects commit authors with their GitHub profiles.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">6</div>
+                    <div>
+                        <h5 class="font-semibold text-white">Analyze & View Reports</h5>
+                        <p>Use "Analyze All" to calculate statistics, then visit "Reports" to see daily, weekly, monthly, and yearly analytics.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 p-3 bg-gray-700 rounded border border-gray-600">
+                <h5 class="font-semibold text-white mb-2">💡 Pro Tips</h5>
+                <ul class="space-y-1 text-xs">
+                    <li>• Use "Update All" to run fetch, analyze, and other operations in sequence</li>
+                    <li>• Individual repository buttons let you perform operations on specific repos</li>
+                    <li>• Failed jobs can be retried using the retry buttons</li>
+                    <li>• The page auto-refreshes when jobs are running to show progress</li>
+                </ul>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -125,7 +203,7 @@
                                             {{end}}
                                         </div>
                                         <button onclick="retryFailedJob('{{.ID}}')" 
-                                                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200 flex-shrink-0">
+                                                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200 flex-shrink-0" title="Retry this failed job">
                                             Retry
                                         </button>
                                     </div>
@@ -147,41 +225,41 @@
                         <div class="flex flex-col gap-2 ml-4">
                         {{if .ProjectRepo.IsTracked}}
                             {{if .HasActiveCloneJobs}}
-                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50">
+                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being cloned">
                                     Cloning...
                                 </button>
                             {{else if .LatestCloneJobFailed}}
                                 <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
                                         class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                        title="Last attempt failed: {{.LatestCloneJobError}}">
+                                        title="Retry the last failed clone job">
                                     Retry Clone
                                 </button>
                             {{else}}
                                 <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                                        class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200">
+                                        class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .GitHubRepo.IsCloned}}Pull latest changes from GitHub{{else}}Clone this repository to local storage{{end}}">
                                     {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
                                 </button>
                             {{end}}
                         {{end}}
                         {{if .ProjectRepo.IsTracked}}
                             {{if .HasActiveAnalyzeJobs}}
-                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50">
+                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being analyzed or fetched">
                                     Processing...
                                 </button>
                             {{else if .LatestAnalyzeJobFailed}}
                                 <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
                                         class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                        title="Last attempt failed: {{.LatestAnalyzeJobError}}">
+                                        title="Retry the last failed analyze job">
                                     Retry Analyze
                                 </button>
                             {{else}}
                                 <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                                        class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200">
+                                        class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Fetch latest pull requests and reviews from GitHub for this repository">
                                     Fetch Github
                                 </button>
                                 {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
                                     <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200">
+                                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Analyze this repository for statistics and insights">
                                         Analyze
                                     </button>
                                 {{else}}
@@ -193,7 +271,7 @@
                             {{end}}
                         {{end}}
                         <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" 
-                                class="text-xs {{if .ProjectRepo.IsTracked}}bg-red-600 hover:bg-red-500{{else}}bg-green-600 hover:bg-green-500{{end}} text-white px-3 py-1 rounded transition-colors duration-200">
+                                class="text-xs {{if .ProjectRepo.IsTracked}}bg-red-600 hover:bg-red-500{{else}}bg-green-600 hover:bg-green-500{{end}} text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .ProjectRepo.IsTracked}}Stop tracking this repository{{else}}Start tracking this repository{{end}}">
                             {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
                         </button>
                         </div>
@@ -299,6 +377,23 @@ function startAutoRefresh() {
     }
 }
 
+// Help section toggle functionality
+function toggleHelpSection() {
+    const helpContent = document.getElementById('help-content');
+    const helpToggle = document.getElementById('help-toggle');
+    const isHidden = helpContent.classList.contains('hidden');
+    
+    if (isHidden) {
+        helpContent.classList.remove('hidden');
+        helpToggle.textContent = '▲';
+        localStorage.setItem('gscope-help-collapsed', 'false');
+    } else {
+        helpContent.classList.add('hidden');
+        helpToggle.textContent = '▼';
+        localStorage.setItem('gscope-help-collapsed', 'true');
+    }
+}
+
 // Start auto-refresh when page loads if there are active jobs
 document.addEventListener('DOMContentLoaded', function() {
     // Show toast if there's a message in URL params
@@ -313,6 +408,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Restore scroll position if it was saved
     restoreScrollPosition();
+    
+    // Restore help section state from localStorage
+    const helpCollapsed = localStorage.getItem('gscope-help-collapsed');
+    if (helpCollapsed === 'true') {
+        const helpContent = document.getElementById('help-content');
+        const helpToggle = document.getElementById('help-toggle');
+        if (helpContent && helpToggle) {
+            helpContent.classList.add('hidden');
+            helpToggle.textContent = '▼';
+        }
+    }
     
     // Start auto-refresh
     startAutoRefresh();

@@ -523,14 +523,14 @@ func (s *PeopleStatisticsService) GetYearlyStatisticsByProject(projectID string,
 
 // GetAvailableYearsForProject retrieves all available years for a project
 func (s *PeopleStatisticsService) GetAvailableYearsForProject(projectID string) ([]int, error) {
-	// Get the earliest and latest commit dates for this project from commits table
-	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	// Get the earliest and latest dates from people_statistics table for this project
+	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate.IsZero() || latestDate.IsZero() {
-		// If no commits exist, return current year only
+	if earliestDate == nil || latestDate == nil {
+		// If no statistics exist, return current year only
 		currentYear := time.Now().Year()
 		return []int{currentYear}, nil
 	}
@@ -611,14 +611,14 @@ func (s *PeopleStatisticsService) GetMonthlyStatisticsByProject(projectID string
 
 // GetAvailableMonthsForProject retrieves all available months for a project
 func (s *PeopleStatisticsService) GetAvailableMonthsForProject(projectID string) ([]string, error) {
-	// Get the earliest and latest commit dates for this project from commits table
-	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	// Get the earliest and latest dates from people_statistics table for this project
+	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate.IsZero() || latestDate.IsZero() {
-		// If no commits exist, return current month only
+	if earliestDate == nil || latestDate == nil {
+		// If no statistics exist, return current month only
 		now := time.Now()
 		currentMonth := fmt.Sprintf("%d-%02d", now.Year(), now.Month())
 		return []string{currentMonth}, nil
@@ -626,8 +626,8 @@ func (s *PeopleStatisticsService) GetAvailableMonthsForProject(projectID string)
 
 	// Generate months from earliest to latest
 	var months []string
-	startDate := earliestDate
-	endDate := latestDate
+	startDate := *earliestDate
+	endDate := *latestDate
 
 	// If no data, default to current month
 	if startDate.IsZero() || endDate.IsZero() {
@@ -706,14 +706,14 @@ func (s *PeopleStatisticsService) GetWeeklyStatisticsByProject(projectID string,
 
 // GetAvailableWeeksForProject retrieves all available weeks for a project (last 52 weeks)
 func (s *PeopleStatisticsService) GetAvailableWeeksForProject(projectID string) ([]string, error) {
-	// Get the earliest and latest commit dates for this project from commits table
-	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	// Get the earliest and latest dates from people_statistics table for this project
+	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate.IsZero() || latestDate.IsZero() {
-		// If no commits exist, return current week only
+	if earliestDate == nil || latestDate == nil {
+		// If no statistics exist, return current week only
 		now := time.Now()
 		year, week := now.ISOWeek()
 		currentWeek := fmt.Sprintf("%d-W%02d", year, week)
@@ -722,7 +722,7 @@ func (s *PeopleStatisticsService) GetAvailableWeeksForProject(projectID string) 
 
 	// Generate weeks from the last 52 weeks
 	var weeks []string
-	endDate := latestDate
+	endDate := *latestDate
 	startDate := endDate.AddDate(0, 0, -52*7) // 52 weeks ago
 
 	// If no data, default to current week
@@ -804,14 +804,14 @@ func (s *PeopleStatisticsService) GetDailyStatisticsByProject(projectID string, 
 
 // GetAvailableDaysForProject retrieves all available days for a project (last 30 days)
 func (s *PeopleStatisticsService) GetAvailableDaysForProject(projectID string) ([]string, error) {
-	// Get the earliest and latest commit dates for this project from commits table
-	earliestDate, latestDate, err := s.commitRepo.GetDateRangeByProjectID(projectID)
+	// Get the earliest and latest dates from people_statistics table for this project
+	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate.IsZero() || latestDate.IsZero() {
-		// If no commits exist, return current day only
+	if earliestDate == nil || latestDate == nil {
+		// If no statistics exist, return current day only
 		now := time.Now()
 		currentDay := now.Format("2006-01-02")
 		return []string{currentDay}, nil
@@ -819,7 +819,7 @@ func (s *PeopleStatisticsService) GetAvailableDaysForProject(projectID string) (
 
 	// Generate days from the last 30 days
 	var days []string
-	endDate := latestDate
+	endDate := *latestDate
 	startDate := endDate.AddDate(0, 0, -30) // 30 days ago
 
 	// If no data, default to current day

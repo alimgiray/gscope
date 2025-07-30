@@ -1696,10 +1696,13 @@ func (h *ProjectHandler) ViewProjectReportsDaily(c *gin.Context) {
 		availableDays = []string{time.Now().Format("2006-01-02")}
 	}
 
-	// Get selected day from query parameter, default to current day
+	// Get selected day from query parameter, default to the first available day (most recent)
 	selectedDay := time.Now().Format("2006-01-02")
 	if dayStr := c.Query("day"); dayStr != "" {
 		selectedDay = dayStr
+	} else if len(availableDays) > 0 {
+		// Use the first (most recent) available day as default
+		selectedDay = availableDays[0]
 	}
 
 	// Parse selected day to get date
@@ -1773,12 +1776,15 @@ func (h *ProjectHandler) ViewProjectReportsWeekly(c *gin.Context) {
 		availableWeeks = []string{fmt.Sprintf("%d-W%02d", year, week)}
 	}
 
-	// Get selected week from query parameter, default to current week
+	// Get selected week from query parameter, default to the first available week (most recent)
 	now := time.Now()
 	year, week := now.ISOWeek()
 	selectedWeek := fmt.Sprintf("%d-W%02d", year, week)
 	if weekStr := c.Query("week"); weekStr != "" {
 		selectedWeek = weekStr
+	} else if len(availableWeeks) > 0 {
+		// Use the first (most recent) available week as default
+		selectedWeek = availableWeeks[0]
 	}
 
 	// Parse selected week to get year and week
@@ -1851,10 +1857,13 @@ func (h *ProjectHandler) ViewProjectReportsMonthly(c *gin.Context) {
 		availableMonths = []string{fmt.Sprintf("%d-%02d", time.Now().Year(), time.Now().Month())}
 	}
 
-	// Get selected month from query parameter, default to current month
+	// Get selected month from query parameter, default to the first available month (most recent)
 	selectedMonth := fmt.Sprintf("%d-%02d", time.Now().Year(), time.Now().Month())
 	if monthStr := c.Query("month"); monthStr != "" {
 		selectedMonth = monthStr
+	} else if len(availableMonths) > 0 {
+		// Use the first (most recent) available month as default
+		selectedMonth = availableMonths[0]
 	}
 
 	// Parse selected month to get year and month
@@ -1927,12 +1936,15 @@ func (h *ProjectHandler) ViewProjectReportsYearly(c *gin.Context) {
 		availableYears = []int{time.Now().Year()}
 	}
 
-	// Get selected year from query parameter, default to current year
+	// Get selected year from query parameter, default to the first available year (most recent)
 	selectedYear := time.Now().Year()
 	if yearStr := c.Query("year"); yearStr != "" {
 		if year, err := strconv.Atoi(yearStr); err == nil {
 			selectedYear = year
 		}
+	} else if len(availableYears) > 0 {
+		// Use the first (most recent) available year as default
+		selectedYear = availableYears[0]
 	}
 
 	// Get yearly statistics for the selected year

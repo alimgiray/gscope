@@ -270,11 +270,11 @@ func (r *PeopleStatisticsRepository) GetByDate(projectID string, statDate time.T
 		SELECT id, project_id, repository_id, github_person_id, stat_date,
 		       commits, additions, deletions, comments, pull_requests, score,
 		       created_at, updated_at
-		FROM people_statistics WHERE project_id = ? AND stat_date = ?
+		FROM people_statistics WHERE project_id = ? AND date(stat_date) = ?
 		ORDER BY score DESC
 	`
 
-	rows, err := r.db.Query(query, projectID, statDate)
+	rows, err := r.db.Query(query, projectID, statDate.Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (r *PeopleStatisticsRepository) GetByProjectAndPersonAndYear(projectID, git
 // GetDateRangeForProject retrieves the earliest and latest dates for a project
 func (r *PeopleStatisticsRepository) GetDateRangeForProject(projectID string) (*time.Time, *time.Time, error) {
 	query := `
-		SELECT MIN(stat_date), MAX(stat_date)
+		SELECT MIN(date(stat_date)), MAX(date(stat_date))
 		FROM people_statistics 
 		WHERE project_id = ?
 	`
@@ -501,7 +501,7 @@ func (r *PeopleStatisticsRepository) GetByProjectAndPersonAndDate(projectID, git
 		       commits, additions, deletions, comments, pull_requests, score,
 		       created_at, updated_at
 		FROM people_statistics 
-		WHERE project_id = ? AND github_person_id = ? AND stat_date = ?
+		WHERE project_id = ? AND github_person_id = ? AND date(stat_date) = ?
 		ORDER BY stat_date DESC
 	`
 
