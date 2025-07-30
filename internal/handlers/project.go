@@ -364,7 +364,14 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		"Message":      message,
 	}
 
-	c.HTML(http.StatusOK, "project_view", data)
+	// Check if this is an AJAX request
+	if c.Query("ajax") == "1" || c.GetHeader("X-Requested-With") == "XMLHttpRequest" {
+		// Return only the repository sections for AJAX updates
+		c.HTML(http.StatusOK, "project_view_ajax", data)
+	} else {
+		// Return full page for normal requests
+		c.HTML(http.StatusOK, "project_view", data)
+	}
 }
 
 // ProjectSettings displays the project settings page
