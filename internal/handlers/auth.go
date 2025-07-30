@@ -26,6 +26,13 @@ func NewAuthHandler(userService *services.UserService) *AuthHandler {
 // Login handles the login page
 func (h *AuthHandler) Login(c *gin.Context) {
 	session := middleware.GetSession(c)
+
+	// If user is already logged in, redirect to dashboard
+	if session != nil && session.UserID != "" {
+		c.Redirect(http.StatusFound, "/dashboard")
+		return
+	}
+
 	errorMsg := c.Query("error")
 
 	data := gin.H{
