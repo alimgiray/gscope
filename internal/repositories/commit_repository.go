@@ -211,7 +211,33 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string, mergedEmai
 				mergedIntoMap[targetEmail] = append(mergedIntoMap[targetEmail], stats.Email)
 			} else {
 				// This email is not merged, check if it's a target email
+				// Only add it if it's not already in the map (from a previous merge)
 				if _, isTarget := emailStatsMap[stats.Email]; !isTarget {
+					emailStatsMap[stats.Email] = stats
+				}
+			}
+		}
+
+		// Second pass: handle target emails that exist as separate entries
+		for _, stats := range emailStats {
+			// Skip if this email is already processed (merged into another)
+			if _, isMerged := mergedEmails[stats.Email]; isMerged {
+				continue
+			}
+
+			// Check if this email is a target email (has other emails merged into it)
+			if _, hasMerged := mergedIntoMap[stats.Email]; hasMerged {
+				// This is a target email, merge its stats with any existing target stats
+				if targetStats, targetExists := emailStatsMap[stats.Email]; targetExists {
+					// Merge the stats
+					if stats.FirstCommit != nil && (targetStats.FirstCommit == nil || stats.FirstCommit.Before(*targetStats.FirstCommit)) {
+						targetStats.FirstCommit = stats.FirstCommit
+					}
+					if stats.LastCommit != nil && (targetStats.LastCommit == nil || stats.LastCommit.After(*targetStats.LastCommit)) {
+						targetStats.LastCommit = stats.LastCommit
+					}
+				} else {
+					// Target email doesn't exist in map yet, add it
 					emailStatsMap[stats.Email] = stats
 				}
 			}
