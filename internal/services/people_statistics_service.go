@@ -523,32 +523,15 @@ func (s *PeopleStatisticsService) GetYearlyStatisticsByProject(projectID string,
 
 // GetAvailableYearsForProject retrieves all available years for a project
 func (s *PeopleStatisticsService) GetAvailableYearsForProject(projectID string) ([]int, error) {
-	// Get the earliest and latest dates from people_statistics table for this project
-	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
+	years, err := s.peopleStatsRepo.GetAvailableYearsForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate == nil || latestDate == nil {
+	if len(years) == 0 {
 		// If no statistics exist, return current year only
 		currentYear := time.Now().Year()
 		return []int{currentYear}, nil
-	}
-
-	// Generate years from earliest to latest
-	var years []int
-	startYear := earliestDate.Year()
-	endYear := latestDate.Year()
-
-	// If no data, default to current year
-	if startYear == 0 || endYear == 0 {
-		currentYear := time.Now().Year()
-		return []int{currentYear}, nil
-	}
-
-	// Generate years in descending order (newest first)
-	for year := endYear; year >= startYear; year-- {
-		years = append(years, year)
 	}
 
 	return years, nil
@@ -611,39 +594,16 @@ func (s *PeopleStatisticsService) GetMonthlyStatisticsByProject(projectID string
 
 // GetAvailableMonthsForProject retrieves all available months for a project
 func (s *PeopleStatisticsService) GetAvailableMonthsForProject(projectID string) ([]string, error) {
-	// Get the earliest and latest dates from people_statistics table for this project
-	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
+	months, err := s.peopleStatsRepo.GetAvailableMonthsForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate == nil || latestDate == nil {
+	if len(months) == 0 {
 		// If no statistics exist, return current month only
 		now := time.Now()
 		currentMonth := fmt.Sprintf("%d-%02d", now.Year(), now.Month())
 		return []string{currentMonth}, nil
-	}
-
-	// Generate months from earliest to latest
-	var months []string
-	startDate := *earliestDate
-	endDate := *latestDate
-
-	// If no data, default to current month
-	if startDate.IsZero() || endDate.IsZero() {
-		now := time.Now()
-		currentMonth := fmt.Sprintf("%d-%02d", now.Year(), now.Month())
-		return []string{currentMonth}, nil
-	}
-
-	// Generate months in descending order (newest first)
-	current := endDate
-	for current.After(startDate) || current.Equal(startDate) {
-		monthStr := fmt.Sprintf("%d-%02d", current.Year(), current.Month())
-		months = append(months, monthStr)
-
-		// Move to previous month
-		current = current.AddDate(0, -1, 0)
 	}
 
 	return months, nil
@@ -704,44 +664,19 @@ func (s *PeopleStatisticsService) GetWeeklyStatisticsByProject(projectID string,
 	return results, nil
 }
 
-// GetAvailableWeeksForProject retrieves all available weeks for a project (last 52 weeks)
+// GetAvailableWeeksForProject retrieves all available weeks for a project
 func (s *PeopleStatisticsService) GetAvailableWeeksForProject(projectID string) ([]string, error) {
-	// Get the earliest and latest dates from people_statistics table for this project
-	earliestDate, latestDate, err := s.peopleStatsRepo.GetDateRangeForProject(projectID)
+	weeks, err := s.peopleStatsRepo.GetAvailableWeeksForProject(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	if earliestDate == nil || latestDate == nil {
+	if len(weeks) == 0 {
 		// If no statistics exist, return current week only
 		now := time.Now()
 		year, week := now.ISOWeek()
 		currentWeek := fmt.Sprintf("%d-W%02d", year, week)
 		return []string{currentWeek}, nil
-	}
-
-	// Generate weeks from the last 52 weeks
-	var weeks []string
-	endDate := *latestDate
-	startDate := endDate.AddDate(0, 0, -52*7) // 52 weeks ago
-
-	// If no data, default to current week
-	if startDate.IsZero() || endDate.IsZero() {
-		now := time.Now()
-		year, week := now.ISOWeek()
-		currentWeek := fmt.Sprintf("%d-W%02d", year, week)
-		return []string{currentWeek}, nil
-	}
-
-	// Generate weeks in descending order (newest first)
-	current := endDate
-	for current.After(startDate) || current.Equal(startDate) {
-		year, week := current.ISOWeek()
-		weekStr := fmt.Sprintf("%d-W%02d", year, week)
-		weeks = append(weeks, weekStr)
-
-		// Move to previous week
-		current = current.AddDate(0, 0, -7)
 	}
 
 	return weeks, nil

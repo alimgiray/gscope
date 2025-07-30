@@ -3,6 +3,7 @@ package repositories
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -424,6 +425,89 @@ func (r *PeopleStatisticsRepository) GetDateRangeForProject(projectID string) (*
 	}
 
 	return earliest, latest, nil
+}
+
+// GetAvailableWeeksForProject retrieves all available weeks for a project
+func (r *PeopleStatisticsRepository) GetAvailableWeeksForProject(projectID string) ([]string, error) {
+	query := `
+		SELECT DISTINCT strftime('%Y-W%W', stat_date) as week
+		FROM people_statistics 
+		WHERE project_id = ?
+		ORDER BY week DESC
+	`
+
+	rows, err := r.db.Query(query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var weeks []string
+	for rows.Next() {
+		var week string
+		if err := rows.Scan(&week); err != nil {
+			continue
+		}
+		weeks = append(weeks, week)
+	}
+
+	return weeks, nil
+}
+
+// GetAvailableMonthsForProject retrieves all available months for a project
+func (r *PeopleStatisticsRepository) GetAvailableMonthsForProject(projectID string) ([]string, error) {
+	query := `
+		SELECT DISTINCT strftime('%Y-%m', stat_date) as month
+		FROM people_statistics 
+		WHERE project_id = ?
+		ORDER BY month DESC
+	`
+
+	rows, err := r.db.Query(query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var months []string
+	for rows.Next() {
+		var month string
+		if err := rows.Scan(&month); err != nil {
+			continue
+		}
+		months = append(months, month)
+	}
+
+	return months, nil
+}
+
+// GetAvailableYearsForProject retrieves all available years for a project
+func (r *PeopleStatisticsRepository) GetAvailableYearsForProject(projectID string) ([]int, error) {
+	query := `
+		SELECT DISTINCT strftime('%Y', stat_date) as year
+		FROM people_statistics 
+		WHERE project_id = ?
+		ORDER BY year DESC
+	`
+
+	rows, err := r.db.Query(query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var years []int
+	for rows.Next() {
+		var yearStr string
+		if err := rows.Scan(&yearStr); err != nil {
+			continue
+		}
+		if year, err := strconv.Atoi(yearStr); err == nil {
+			years = append(years, year)
+		}
+	}
+
+	return years, nil
 }
 
 // GetByProjectAndPersonAndMonth retrieves statistics for a specific person in a project for a specific month

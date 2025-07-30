@@ -124,8 +124,8 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string, mergedEmai
 		SELECT 
 			c.author_email,
 			c.author_name,
-			MIN(c.created_at) as first_commit,
-			MAX(c.created_at) as last_commit
+			MIN(c.commit_date) as first_commit,
+			MAX(c.commit_date) as last_commit
 		FROM commits c
 		INNER JOIN github_repositories gr ON c.github_repository_id = gr.id
 		INNER JOIN project_repositories pr ON gr.id = pr.github_repo_id
@@ -160,13 +160,17 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string, mergedEmai
 
 		// Parse time strings to time.Time
 		if firstCommitStr != nil {
-			if t, err := time.Parse("2006-01-02 15:04:05", *firstCommitStr); err == nil {
+			if t, err := time.Parse("2006-01-02 15:04:05-07:00", *firstCommitStr); err == nil {
+				stats.FirstCommit = &t
+			} else if t, err := time.Parse("2006-01-02 15:04:05", *firstCommitStr); err == nil {
 				stats.FirstCommit = &t
 			}
 		}
 
 		if lastCommitStr != nil {
-			if t, err := time.Parse("2006-01-02 15:04:05", *lastCommitStr); err == nil {
+			if t, err := time.Parse("2006-01-02 15:04:05-07:00", *lastCommitStr); err == nil {
+				stats.LastCommit = &t
+			} else if t, err := time.Parse("2006-01-02 15:04:05", *lastCommitStr); err == nil {
 				stats.LastCommit = &t
 			}
 		}

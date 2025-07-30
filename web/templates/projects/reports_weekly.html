@@ -33,7 +33,14 @@
 
 <!-- Weekly Reports Content -->
 <div class="card mt-4">
-    <div class="card-header">Weekly Reports - {{.SelectedWeek}}</div>
+    <div class="card-header">
+        <div class="flex items-center justify-between">
+            <span>Weekly Reports - {{.SelectedWeek}}</span>
+            {{if .WeekDateRange}}
+            <span class="text-sm text-gray-400 font-normal">{{.WeekDateRange}}</span>
+            {{end}}
+        </div>
+    </div>
     <div class="card-body">
         {{if .WeeklyStats}}
             <div class="space-y-4">

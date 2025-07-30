@@ -1800,16 +1800,45 @@ func (h *ProjectHandler) ViewProjectReportsWeekly(c *gin.Context) {
 		weeklyStats = []*models.GitHubPersonStats{}
 	}
 
+	// Calculate date range for the selected week
+	weekDateRange := h.calculateWeekDateRange(selectedYear, selectedWeekInt)
+
 	data := gin.H{
-		"Title":        "Weekly Reports - " + project.Name,
-		"User":         session,
-		"Project":      project,
-		"Weeks":        availableWeeks,
-		"SelectedWeek": selectedWeek,
-		"WeeklyStats":  weeklyStats,
+		"Title":         "Weekly Reports - " + project.Name,
+		"User":          session,
+		"Project":       project,
+		"Weeks":         availableWeeks,
+		"SelectedWeek":  selectedWeek,
+		"WeeklyStats":   weeklyStats,
+		"WeekDateRange": weekDateRange,
 	}
 
 	c.HTML(http.StatusOK, "project_reports_weekly", data)
+}
+
+// calculateWeekDateRange calculates the start and end date for a given year and week
+func (h *ProjectHandler) calculateWeekDateRange(year, week int) string {
+	// Create a date for January 1st of the given year
+	jan1 := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Find the first Monday of the year
+	daysUntilMonday := (8 - int(jan1.Weekday())) % 7
+	if daysUntilMonday == 0 {
+		daysUntilMonday = 7
+	}
+	firstMonday := jan1.AddDate(0, 0, daysUntilMonday-1)
+
+	// Calculate the start of the specified week
+	weekStart := firstMonday.AddDate(0, 0, (week-1)*7)
+
+	// Calculate the end of the week (Sunday)
+	weekEnd := weekStart.AddDate(0, 0, 6)
+
+	// Format the date range
+	startStr := weekStart.Format("02.01.06")
+	endStr := weekEnd.Format("02.01.06")
+
+	return fmt.Sprintf("%s - %s", startStr, endStr)
 }
 
 // ViewProjectReportsMonthly displays the monthly reports page for a project
