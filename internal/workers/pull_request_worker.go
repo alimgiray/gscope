@@ -719,7 +719,6 @@ func (w *PullRequestWorker) createAuthenticatedClient(token string) *github.Clie
 // makeGitHubRequestWithRetry performs a GitHub API request with rate limit handling and exponential backoff
 func (w *PullRequestWorker) makeGitHubRequestWithRetry(ctx context.Context, requestFunc func() ([]*github.PullRequest, *github.Response, error)) ([]*github.PullRequest, *github.Response, error) {
 	maxRetries := 5
-	baseDelay := time.Second
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		result, resp, err := requestFunc()
@@ -742,8 +741,22 @@ func (w *PullRequestWorker) makeGitHubRequestWithRetry(ctx context.Context, requ
 				}
 			}
 
-			// If we can't parse the reset time, use exponential backoff
-			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			// If we can't parse the reset time, use gradual backoff: 1min, 3min, 6min, 10min, 15min
+			var waitTime time.Duration
+			switch attempt {
+			case 1:
+				waitTime = 1 * time.Minute
+			case 2:
+				waitTime = 3 * time.Minute
+			case 3:
+				waitTime = 6 * time.Minute
+			case 4:
+				waitTime = 10 * time.Minute
+			case 5:
+				waitTime = 15 * time.Minute
+			default:
+				waitTime = 15 * time.Minute
+			}
 			log.Printf("Rate limit exceeded (attempt %d/%d), waiting %v before retry", attempt, maxRetries, waitTime)
 			time.Sleep(waitTime)
 			continue
@@ -751,7 +764,21 @@ func (w *PullRequestWorker) makeGitHubRequestWithRetry(ctx context.Context, requ
 
 		// For other errors, use exponential backoff
 		if attempt < maxRetries {
-			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			var waitTime time.Duration
+			switch attempt {
+			case 1:
+				waitTime = 1 * time.Minute
+			case 2:
+				waitTime = 3 * time.Minute
+			case 3:
+				waitTime = 6 * time.Minute
+			case 4:
+				waitTime = 10 * time.Minute
+			case 5:
+				waitTime = 15 * time.Minute
+			default:
+				waitTime = 15 * time.Minute
+			}
 			log.Printf("GitHub API request failed (attempt %d/%d): %v, waiting %v before retry", attempt, maxRetries, err, waitTime)
 			time.Sleep(waitTime)
 			continue
@@ -768,7 +795,6 @@ func (w *PullRequestWorker) makeGitHubRequestWithRetry(ctx context.Context, requ
 // makeGitHubRequestWithRetryReviews performs a GitHub API request for reviews with rate limit handling and exponential backoff
 func (w *PullRequestWorker) makeGitHubRequestWithRetryReviews(ctx context.Context, requestFunc func() ([]*github.PullRequestReview, *github.Response, error)) ([]*github.PullRequestReview, *github.Response, error) {
 	maxRetries := 5
-	baseDelay := time.Second
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		result, resp, err := requestFunc()
@@ -791,8 +817,22 @@ func (w *PullRequestWorker) makeGitHubRequestWithRetryReviews(ctx context.Contex
 				}
 			}
 
-			// If we can't parse the reset time, use exponential backoff
-			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			// If we can't parse the reset time, use gradual backoff: 1min, 3min, 6min, 10min, 15min
+			var waitTime time.Duration
+			switch attempt {
+			case 1:
+				waitTime = 1 * time.Minute
+			case 2:
+				waitTime = 3 * time.Minute
+			case 3:
+				waitTime = 6 * time.Minute
+			case 4:
+				waitTime = 10 * time.Minute
+			case 5:
+				waitTime = 15 * time.Minute
+			default:
+				waitTime = 15 * time.Minute
+			}
 			log.Printf("Rate limit exceeded (attempt %d/%d), waiting %v before retry", attempt, maxRetries, waitTime)
 			time.Sleep(waitTime)
 			continue
@@ -800,7 +840,21 @@ func (w *PullRequestWorker) makeGitHubRequestWithRetryReviews(ctx context.Contex
 
 		// For other errors, use exponential backoff
 		if attempt < maxRetries {
-			waitTime := time.Duration(attempt) * baseDelay * time.Duration(1<<(attempt-1))
+			var waitTime time.Duration
+			switch attempt {
+			case 1:
+				waitTime = 1 * time.Minute
+			case 2:
+				waitTime = 3 * time.Minute
+			case 3:
+				waitTime = 6 * time.Minute
+			case 4:
+				waitTime = 10 * time.Minute
+			case 5:
+				waitTime = 15 * time.Minute
+			default:
+				waitTime = 15 * time.Minute
+			}
 			log.Printf("GitHub API request failed (attempt %d/%d): %v, waiting %v before retry", attempt, maxRetries, err, waitTime)
 			time.Sleep(waitTime)
 			continue
