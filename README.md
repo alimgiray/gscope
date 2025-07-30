@@ -41,11 +41,30 @@ GScope is a comprehensive analytics platform designed specifically for engineeri
    # Edit .env with your configuration
    ```
 
-3. **Configure GitHub OAuth**
+3. **Configure GitHub OAuth App**
+   
+   **Important**: You need to create your own GitHub OAuth App because the callback URL must match your deployment environment.
+   
+   **For Local Development:**
    - Go to [GitHub OAuth Apps](https://github.com/settings/developers)
-   - Create a new OAuth App
-   - Set Authorization callback URL to: `http://localhost:8080/auth/github/callback`
-   - Copy Client ID and Client Secret to your `.env` file
+   - Click "New OAuth App"
+   - Fill in the details:
+     - **Application name**: `GScope` (or any name you prefer)
+     - **Homepage URL**: `http://localhost:8080`
+     - **Authorization callback URL**: `http://localhost:8080/auth/github/callback`
+   - Click "Register application"
+   - Copy the **Client ID** and **Client Secret** to your `.env` file
+   
+   **For Production Deployment:**
+   - Create a new OAuth App with your production domain
+   - Set **Authorization callback URL** to: `https://yourdomain.com/auth/github/callback`
+   - Update your environment variables accordingly
+   
+   **OAuth App Scopes Required:**
+   - `user:email` - Access to user's email addresses
+   - `read:user` - Read access to user profile data  
+   - `read:org` - Read access to organization membership
+   - `repo` - Full access to repositories (includes PRs, issues, etc.)
 
 4. **Run GScope**
    ```bash
@@ -100,6 +119,15 @@ export GITHUB_CLIENT_ID=your_production_client_id
 export GITHUB_CLIENT_SECRET=your_production_client_secret
 export GITHUB_CALLBACK_URL=https://yourdomain.com/auth/github/callback
 ```
+
+### GitHub API Rate Limits
+GScope uses GitHub's OAuth App tokens which have a rate limit of **5,000 requests per hour**. For high-volume usage or large repositories, consider:
+
+- **GitHub Personal Access Tokens (PATs)**: Same rate limit but more suitable for server-to-server calls
+- **GitHub Apps**: Higher rate limits for enterprise use cases
+- **Enterprise GitHub**: Significantly higher rate limits
+
+The application includes built-in rate limiting handling with exponential backoff and automatic retry logic.
 
 ## Features
 
