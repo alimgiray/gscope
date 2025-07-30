@@ -115,6 +115,13 @@ func (w *StatsWorker) ProcessJob(ctx context.Context, job *models.Job) error {
 			return nil // Skip untracked repositories
 		}
 
+		// Clear existing statistics for this repository before recalculating
+		log.Printf("Clearing existing statistics for repository: %s", projectRepo.ID)
+		if err := w.peopleStatsService.DeleteStatisticsByRepository(projectRepo.ID); err != nil {
+			log.Printf("Warning: failed to clear existing statistics for repository %s: %v", projectRepo.ID, err)
+			// Continue anyway - we'll recalculate from scratch
+		}
+
 		log.Printf("Calculating statistics for repository: %s", projectRepo.ID)
 		err = w.peopleStatsService.CalculateStatisticsForRepository(job.ProjectID, projectRepo.ID, projectRepo.GithubRepoID)
 		if err != nil {
@@ -134,6 +141,13 @@ func (w *StatsWorker) ProcessJob(ctx context.Context, job *models.Job) error {
 		for _, projectRepo := range projectRepos {
 			if !projectRepo.IsTracked {
 				continue
+			}
+
+			// Clear existing statistics for this repository before recalculating
+			log.Printf("Clearing existing statistics for repository: %s", projectRepo.ID)
+			if err := w.peopleStatsService.DeleteStatisticsByRepository(projectRepo.ID); err != nil {
+				log.Printf("Warning: failed to clear existing statistics for repository %s: %v", projectRepo.ID, err)
+				// Continue anyway - we'll recalculate from scratch
 			}
 
 			log.Printf("Calculating statistics for repository: %s", projectRepo.ID)
