@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/alimgiray/gscope/internal/handlers"
 	"github.com/alimgiray/gscope/internal/middleware"
@@ -149,6 +151,27 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+
+	// Create a context with 2-second timeout for graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Handle multiple Ctrl+C presses - force shutdown after 2 seconds
+	go func() {
+		<-quit
+		log.Println("Force shutdown requested...")
+		cancel() // Cancel the context to force immediate shutdown
+	}()
+
+	// Attempt graceful shutdown
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	// Stop all workers
+	workerManager.StopAll()
+	log.Println("Workers stopped")
+
 	log.Println("Server stopped")
 }
 
@@ -235,6 +258,7 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/dashboard.html"),
 		filepath.Join(cwd, "web/templates/projects/create.html"),
 		filepath.Join(cwd, "web/templates/projects/view.html"),
+		filepath.Join(cwd, "web/templates/projects/view_ajax.html"),
 		filepath.Join(cwd, "web/templates/projects/settings.html"),
 		filepath.Join(cwd, "web/templates/projects/emails.html"),
 		filepath.Join(cwd, "web/templates/projects/people.html"),
