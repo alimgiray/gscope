@@ -1,10 +1,8 @@
 -- Migration: Update pr_reviews table - remove unwanted columns
 -- Date: 2024-12-19
 
--- Drop the existing table and recreate it with the new schema
-DROP TABLE IF EXISTS pr_reviews;
-
-CREATE TABLE pr_reviews (
+-- Only create the table if it doesn't exist
+CREATE TABLE IF NOT EXISTS pr_reviews (
     id TEXT PRIMARY KEY,
     repository_id TEXT NOT NULL,
     pull_request_id TEXT NOT NULL,
@@ -25,7 +23,7 @@ CREATE TABLE pr_reviews (
     FOREIGN KEY (pull_request_id) REFERENCES pull_requests (id)
 );
 
--- Recreate the trigger
+-- Create the trigger if it doesn't exist
 CREATE TRIGGER IF NOT EXISTS update_pr_reviews_updated_at
     AFTER UPDATE ON pr_reviews
     FOR EACH ROW

@@ -35,9 +35,7 @@ func (s *PRReviewService) UpdatePRReview(review *models.PRReview) error {
 	return s.prReviewRepo.Update(review)
 }
 
-func (s *PRReviewService) DeletePRReview(id string) error {
-	return s.prReviewRepo.Delete(id)
-}
+// DeletePRReview function removed to prevent accidental deletion of PR reviews
 
 func (s *PRReviewService) UpsertPRReview(review *models.PRReview) error {
 	return s.prReviewRepo.Upsert(review)

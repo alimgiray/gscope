@@ -150,11 +150,7 @@ func (r *PRReviewRepository) Update(review *models.PRReview) error {
 	return err
 }
 
-func (r *PRReviewRepository) Delete(id string) error {
-	query := `DELETE FROM pr_reviews WHERE id = ?`
-	_, err := r.db.Exec(query, id)
-	return err
-}
+// Delete function removed to prevent accidental deletion of PR reviews
 
 func (r *PRReviewRepository) Upsert(review *models.PRReview) error {
 	// Use a transaction to handle race conditions

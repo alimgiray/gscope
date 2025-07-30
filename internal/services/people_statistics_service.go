@@ -488,6 +488,17 @@ func (s *PeopleStatisticsService) calculateCommitStats(repositoryID, email strin
 
 				// Only count this commit if it has non-excluded files
 				if hasNonExcludedFiles {
+					// Optimization 1: Skip commits with more than 20,000 total changes
+					totalChanges := commitAdditions + commitDeletions
+					if totalChanges > 20000 {
+						continue
+					}
+
+					// Optimization 2: Skip commits that are deletion-only with more than 5,000 deletions
+					if commitAdditions == 0 && commitDeletions > 5000 {
+						continue
+					}
+
 					totalCommits++
 					totalAdditions += commitAdditions
 					totalDeletions += commitDeletions
@@ -1056,6 +1067,17 @@ func (s *PeopleStatisticsService) calculateCommitStatsOptimized(
 
 					// Only count this commit if it has non-excluded files
 					if hasNonExcludedFiles {
+						// Optimization 1: Skip commits with more than 20,000 total changes
+						totalChanges := commitAdditions + commitDeletions
+						if totalChanges > 20000 {
+							continue
+						}
+
+						// Optimization 2: Skip commits that are deletion-only with more than 5,000 deletions
+						if commitAdditions == 0 && commitDeletions > 5000 {
+							continue
+						}
+
 						totalCommits++
 						totalAdditions += commitAdditions
 						totalDeletions += commitDeletions
