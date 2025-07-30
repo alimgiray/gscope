@@ -191,6 +191,7 @@ func (s *CloneService) pullRepository(repoPath string, githubRepo *models.GitHub
 
 		// Success - update GitHub repository record
 		now := time.Now()
+		githubRepo.IsCloned = true
 		githubRepo.LastCloned = &now
 		githubRepo.LocalPath = &repoPath
 
