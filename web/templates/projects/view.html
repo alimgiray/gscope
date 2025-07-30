@@ -136,7 +136,7 @@
         {{if .Repositories}}
             <div class="space-y-4">
                 {{range .Repositories}}
-                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50" data-clone-url="{{.GitHubRepo.CloneURL}}" data-repo-name="{{.GitHubRepo.FullName}}">
+                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50" data-clone-url="{{.GitHubRepo.CloneURL}}" data-repo-name="{{.GitHubRepo.FullName}}" data-repository-id="{{.ProjectRepo.ID}}">
                     <div class="flex justify-between items-start">
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-2">
@@ -371,10 +371,72 @@ function startAutoRefresh() {
         console.log('Active jobs detected, starting auto-refresh every 5 seconds');
         showAutoRefreshIndicator();
         setTimeout(function() {
-            saveScrollPosition();
-            window.location.reload();
+            updateJobStatuses();
         }, 5000);
     }
+}
+
+function updateJobStatuses() {
+    // Save current scroll position
+    saveScrollPosition();
+    
+    // Fetch updated job statuses via AJAX
+    fetch(window.location.pathname + '?ajax=1', {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Create a temporary div to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // Update job status sections without full page reload
+        updateJobSection(tempDiv);
+        
+        // Restore scroll position
+        restoreScrollPosition();
+        
+        // Continue auto-refresh if there are still active jobs
+        if (hasActiveJobs()) {
+            setTimeout(updateJobStatuses, 5000);
+        } else {
+            // Hide auto-refresh indicator when no active jobs
+            const indicator = document.getElementById('auto-refresh-indicator');
+            if (indicator) {
+                indicator.classList.add('hidden');
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error updating job statuses:', error);
+        // Fallback to full page reload on error
+        window.location.reload();
+    });
+}
+
+function updateJobSection(newContent) {
+    // Update repository status sections
+    const repositorySections = document.querySelectorAll('[data-repository-id]');
+    repositorySections.forEach(section => {
+        const repoId = section.getAttribute('data-repository-id');
+        const newSection = newContent.querySelector(`[data-repository-id="${repoId}"]`);
+        if (newSection) {
+            // Update only the buttons and status, not the entire section
+            const buttons = section.querySelectorAll('button');
+            const newButtons = newSection.querySelectorAll('button');
+            
+            buttons.forEach((button, index) => {
+                if (newButtons[index]) {
+                    button.disabled = newButtons[index].disabled;
+                    button.textContent = newButtons[index].textContent;
+                    button.className = newButtons[index].className;
+                }
+            });
+        }
+    });
 }
 
 // Help section toggle functionality

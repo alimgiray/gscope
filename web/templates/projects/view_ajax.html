@@ -1,0 +1,162 @@
+{{define "project_view_ajax"}}
+<!-- This template contains only the repository sections for AJAX updates -->
+<!-- It's used to prevent full page reloads during auto-refresh -->
+
+{{range .Repositories}}
+<div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50" data-clone-url="{{.GitHubRepo.CloneURL}}" data-repo-name="{{.GitHubRepo.FullName}}" data-repository-id="{{.ProjectRepo.ID}}">
+    <div class="flex justify-between items-start">
+        <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-sm font-mono font-semibold text-white">{{.GitHubRepo.FullName}}</span>
+                <div class="flex gap-1">
+                    {{if .ProjectRepo.IsTracked}}
+                        <span class="text-xs bg-green-600 text-white px-2 py-1 rounded">Tracked</span>
+                    {{else}}
+                        <span class="text-xs bg-gray-600 text-white px-2 py-1 rounded">Untracked</span>
+                    {{end}}
+                    {{if .GitHubRepo.IsCloned}}
+                        <span class="text-xs bg-purple-600 text-white px-2 py-1 rounded">Cloned</span>
+                    {{end}}
+                    {{if .ProjectRepo.IsAnalyzed}}
+                        <span class="text-xs bg-orange-600 text-white px-2 py-1 rounded">Analyzed</span>
+                    {{end}}
+                </div>
+            </div>
+            {{if .GitHubRepo.Description}}
+                <p class="text-xs text-gray-300 mb-2">{{.GitHubRepo.Description}}</p>
+            {{end}}
+            <div class="space-y-1 text-xs text-gray-400">
+                <p>Language: {{.GitHubRepo.Language}}</p>
+                <p>Stars: {{.GitHubRepo.Stars}}</p>
+                <p>Forks: {{.GitHubRepo.Forks}}</p>
+                <p>Last Updated: {{.GitHubRepo.UpdatedAt.Format "2006-01-02 15:04:05"}}</p>
+            </div>
+        </div>
+        <div class="flex flex-col gap-2 ml-4">
+        {{if .ProjectRepo.IsTracked}}
+            {{if .HasActiveCloneJobs}}
+                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being cloned">
+                    Cloning...
+                </button>
+            {{else if .LatestCloneJobFailed}}
+                <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
+                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                        title="Retry the last failed clone job">
+                    Retry Clone
+                </button>
+            {{else}}
+                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                        class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .GitHubRepo.IsCloned}}Pull latest changes from GitHub{{else}}Clone this repository to local storage{{end}}">
+                    {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
+                </button>
+            {{end}}
+        {{end}}
+        {{if .ProjectRepo.IsTracked}}
+            {{if .HasActiveAnalyzeJobs}}
+                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being analyzed or fetched">
+                    Processing...
+                </button>
+            {{else if .LatestAnalyzeJobFailed}}
+                <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
+                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                        title="Retry the last failed analyze job">
+                    Retry Analyze
+                </button>
+            {{else}}
+                <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                        class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Fetch latest pull requests and reviews from GitHub for this repository">
+                    Fetch Github
+                </button>
+                {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
+                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Analyze this repository for statistics and insights">
+                        Analyze
+                    </button>
+                {{else}}
+                    <button disabled class="text-xs bg-gray-600 text-gray-300 px-3 py-1 rounded cursor-not-allowed opacity-50" 
+                            title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
+                        Analyze
+                    </button>
+                {{end}}
+            {{end}}
+        {{end}}
+        <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" 
+                class="text-xs {{if .ProjectRepo.IsTracked}}bg-red-600 hover:bg-red-500{{else}}bg-green-600 hover:bg-green-500{{end}} text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .ProjectRepo.IsTracked}}Stop tracking this repository{{else}}Start tracking this repository{{end}}">
+            {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
+        </button>
+        </div>
+    </div>
+
+    {{if .HasActiveCloneJobs}}
+    <div class="mt-3 p-3 bg-blue-900 bg-opacity-10 border border-blue-600 rounded">
+        <div class="text-blue-400 font-semibold mb-2 text-sm">Cloning repository...</div>
+        <div class="text-blue-300 text-xs">This may take a few minutes for large repositories.</div>
+    </div>
+    {{end}}
+
+    {{if .LatestCloneJobFailed}}
+    <div class="mt-3 p-3 bg-red-900 bg-opacity-10 border border-red-600 rounded">
+        <div class="text-red-400 font-semibold mb-2 text-sm">Clone failed</div>
+        {{if .LatestCloneJobError}}
+        <div class="text-red-300 text-xs">{{.LatestCloneJobError}}</div>
+        {{end}}
+        <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
+                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200 mt-2">
+            Retry Clone
+        </button>
+    </div>
+    {{end}}
+
+    {{if .HasActiveAnalyzeJobs}}
+    <div class="mt-3 p-3 bg-orange-900 bg-opacity-10 border border-orange-600 rounded">
+        <div class="text-orange-400 font-semibold mb-2 text-sm">Analyzing repository...</div>
+        <div class="text-orange-300 text-xs">Fetching pull requests and calculating statistics.</div>
+    </div>
+    {{end}}
+
+    {{if .LatestAnalyzeJobFailed}}
+    <div class="mt-3 p-3 bg-red-900 bg-opacity-10 border border-red-600 rounded">
+        <div class="text-red-400 font-semibold mb-2 text-sm">Analysis failed</div>
+        {{if .LatestAnalyzeJobError}}
+        <div class="text-red-300 text-xs">{{.LatestAnalyzeJobError}}</div>
+        {{end}}
+        <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
+                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200 mt-2">
+            Retry Analysis
+        </button>
+    </div>
+    {{end}}
+
+    {{if .FailedJobs}}
+    <div class="mt-3 p-3 bg-red-900 bg-opacity-10 border border-red-600 rounded">
+        <div class="text-red-400 font-semibold mb-2 text-sm">Failed Jobs:</div>
+        {{range .FailedJobs}}
+        <div class="bg-red-900 bg-opacity-30 border border-red-500 rounded p-3 mb-2">
+            <div class="flex justify-between items-start gap-3">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-red-400 font-mono text-sm font-semibold">{{.JobType}}</span>
+                        <span class="text-gray-400 text-xs">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
+                    </div>
+                    {{if .ErrorMessage}}
+                    <div class="text-red-300 text-xs leading-relaxed">{{.ErrorMessage}}</div>
+                    {{end}}
+                </div>
+                <button onclick="retryFailedJob('{{.ID}}')" 
+                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200 flex-shrink-0" title="Retry this failed job">
+                    Retry
+                </button>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+    <div class="flex gap-4 text-xs text-gray-400 mt-3">
+        <span>Last Updated: {{.ProjectRepo.UpdatedAt.Format "2006-01-02 15:04:05"}}</span>
+        {{if .ProjectRepo.LastAnalyzed}}
+        <span>Last Analyzed: {{.ProjectRepo.LastAnalyzed.Format "2006-01-02 15:04:05"}}</span>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}} 
