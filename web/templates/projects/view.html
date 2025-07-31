@@ -383,6 +383,8 @@ function updateJobStatuses() {
     // Save current scroll position
     saveScrollPosition();
     
+    console.log('Updating job statuses...');
+    
     // Fetch updated job statuses via AJAX
     fetch(window.location.pathname + '?ajax=1', {
         method: 'GET',
@@ -390,8 +392,17 @@ function updateJobStatuses() {
             'X-Requested-With': 'XMLHttpRequest'
         }
     })
-    .then(response => response.text())
+    .then(response => {
+        console.log('AJAX response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.text();
+    })
     .then(html => {
+        console.log('AJAX response length:', html.length);
+        console.log('AJAX response preview:', html.substring(0, 200));
+        
         // Create a temporary div to parse the HTML
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = html;
@@ -415,29 +426,72 @@ function updateJobStatuses() {
     })
     .catch(error => {
         console.error('Error updating job statuses:', error);
-        // Fallback to full page reload on error
-        window.location.reload();
+        // Don't reload the page on error, just log it
+        // window.location.reload();
     });
 }
 
 function updateJobSection(newContent) {
+    console.log('Updating job sections...');
     // Update repository status sections
     const repositorySections = document.querySelectorAll('[data-repository-id]');
+    console.log('Found repository sections:', repositorySections.length);
+    
     repositorySections.forEach(section => {
         const repoId = section.getAttribute('data-repository-id');
         const newSection = newContent.querySelector(`[data-repository-id="${repoId}"]`);
         if (newSection) {
-            // Update only the buttons and status, not the entire section
+            // Update buttons
             const buttons = section.querySelectorAll('button');
             const newButtons = newSection.querySelectorAll('button');
             
+            console.log(`Repository ${repoId}: ${buttons.length} current buttons, ${newButtons.length} new buttons`);
+            
             buttons.forEach((button, index) => {
                 if (newButtons[index]) {
-                    button.disabled = newButtons[index].disabled;
-                    button.textContent = newButtons[index].textContent;
-                    button.className = newButtons[index].className;
+                    try {
+                        button.disabled = newButtons[index].disabled;
+                        button.textContent = newButtons[index].textContent;
+                        button.className = newButtons[index].className;
+                    } catch (error) {
+                        console.error('Error updating button:', error);
+                    }
                 }
             });
+            
+            // Update failed jobs section
+            const failedJobsSection = section.querySelector('.bg-red-900.bg-opacity-10');
+            const newFailedJobsSection = newSection.querySelector('.bg-red-900.bg-opacity-10');
+            
+            if (failedJobsSection && newFailedJobsSection) {
+                // Update the entire failed jobs section
+                failedJobsSection.innerHTML = newFailedJobsSection.innerHTML;
+                console.log(`Updated failed jobs section for repository ${repoId}`);
+            } else if (failedJobsSection && !newFailedJobsSection) {
+                // Remove failed jobs section if there are no more failed jobs
+                failedJobsSection.remove();
+                console.log(`Removed failed jobs section for repository ${repoId}`);
+            } else if (!failedJobsSection && newFailedJobsSection) {
+                // Add failed jobs section if there are new failed jobs
+                // Find the right place to insert it (before the stats section)
+                const statsSection = section.querySelector('.flex.gap-4.text-xs.text-gray-400');
+                if (statsSection) {
+                    statsSection.parentNode.insertBefore(newFailedJobsSection.cloneNode(true), statsSection);
+                    console.log(`Added failed jobs section for repository ${repoId}`);
+                }
+            }
+            
+            // Update job status information (error messages)
+            const jobStatusInfo = section.querySelector('.text-xs.mt-2');
+            const newJobStatusInfo = newSection.querySelector('.text-xs.mt-2');
+            
+            if (jobStatusInfo && newJobStatusInfo) {
+                jobStatusInfo.innerHTML = newJobStatusInfo.innerHTML;
+                console.log(`Updated job status info for repository ${repoId}`);
+            }
+            
+        } else {
+            console.log(`No matching section found for repository ${repoId}`);
         }
     });
 }
