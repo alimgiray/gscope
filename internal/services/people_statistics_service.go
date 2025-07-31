@@ -10,7 +10,9 @@ import (
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/alimgiray/gscope/internal/repositories"
+	"github.com/alimgiray/gscope/pkg/logger"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 type PeopleStatisticsService struct {
@@ -1092,6 +1094,13 @@ func (s *PeopleStatisticsService) calculateCommitStatsOptimized(
 						}
 
 						if commitAdditions > 5000 && commitDeletions == 0 {
+							logger.WithFields(logrus.Fields{
+								"commit_id":    commit.ID,
+								"additions":    commitAdditions,
+								"deletions":    commitDeletions,
+								"message":      commit.Message,
+								"person_email": personEmail,
+							}).Info("Skipping commit with >5000 additions and 0 deletions")
 							continue
 						}
 

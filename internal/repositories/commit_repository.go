@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"fmt"
 	"sync"
 	"time"
 
@@ -366,15 +367,37 @@ func (r *CommitRepository) GetDateRangeByRepositoryID(repositoryID string) (time
 		return time.Time{}, time.Time{}, err
 	}
 
-	// Parse the date strings
-	minDate, err := time.Parse("2006-01-02 15:04:05-07:00", minDateStr)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
+	// Try multiple date formats to handle different timezone formats
+	dateFormats := []string{
+		"2006-01-02 15:04:05-07:00", // Standard format with timezone
+		"2006-01-02 15:04:05+03:00", // Format with +03:00 timezone
+		"2006-01-02 15:04:05+00:00", // Format with +00:00 timezone
+		"2006-01-02 15:04:05Z",      // UTC format
+		"2006-01-02 15:04:05",       // Format without timezone
 	}
 
-	maxDate, err := time.Parse("2006-01-02 15:04:05-07:00", maxDateStr)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
+	var minDate, maxDate time.Time
+	var minErr, maxErr error
+
+	// Parse min date
+	for _, format := range dateFormats {
+		minDate, minErr = time.Parse(format, minDateStr)
+		if minErr == nil {
+			break
+		}
+	}
+
+	// Parse max date
+	for _, format := range dateFormats {
+		maxDate, maxErr = time.Parse(format, maxDateStr)
+		if maxErr == nil {
+			break
+		}
+	}
+
+	// If parsing failed for either date, return error
+	if minErr != nil || maxErr != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse dates: minErr=%v, maxErr=%v", minErr, maxErr)
 	}
 
 	return minDate, maxDate, nil

@@ -3164,7 +3164,7 @@ func (h *ProjectHandler) ViewRepository(c *gin.Context) {
 	}
 
 	// Get last activity date
-	if commits != nil && len(commits) > 0 {
+	if len(commits) > 0 {
 		lastCommit := commits[0] // Commits are ordered by date desc
 		repositoryStats["LastActivity"] = lastCommit.CommitDate.Format("2006-01-02 15:04")
 	}
