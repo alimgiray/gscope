@@ -117,3 +117,35 @@ func (r *CommitFileRepository) ExistsByCommitIDAndFilename(commitID, filename st
 	err := r.db.QueryRow(query, commitID, filename).Scan(&count)
 	return count > 0, err
 }
+
+// GetByRepositoryID retrieves all commit files for a repository
+func (r *CommitFileRepository) GetByRepositoryID(repositoryID string) ([]*models.CommitFile, error) {
+	query := `
+		SELECT cf.id, cf.commit_id, cf.filename, cf.status, cf.additions, cf.deletions, cf.changes, cf.created_at
+		FROM commit_files cf
+		INNER JOIN commits c ON cf.commit_id = c.id
+		WHERE c.github_repository_id = ?
+		ORDER BY cf.filename
+	`
+
+	rows, err := r.db.Query(query, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var commitFiles []*models.CommitFile
+	for rows.Next() {
+		commitFile := &models.CommitFile{}
+		err := rows.Scan(
+			&commitFile.ID, &commitFile.CommitID, &commitFile.Filename, &commitFile.Status,
+			&commitFile.Additions, &commitFile.Deletions, &commitFile.Changes, &commitFile.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		commitFiles = append(commitFiles, commitFile)
+	}
+
+	return commitFiles, nil
+}

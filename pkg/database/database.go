@@ -2,12 +2,12 @@ package database
 
 import (
 	"database/sql"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/alimgiray/gscope/pkg/config"
+	"github.com/alimgiray/gscope/pkg/logger"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -38,7 +38,7 @@ func Init() error {
 		return err
 	}
 
-	log.Println("Database connected successfully with WAL mode")
+	logger.Info("Database connected successfully with WAL mode")
 
 	// Run SQL scripts
 	if err = RunSQLScripts(); err != nil {
@@ -126,10 +126,10 @@ func RunSQLScripts() error {
 				return err
 			}
 
-			log.Printf("Executed SQL script: %s", file.Name())
+			logger.WithField("script", file.Name()).Info("Executed SQL script")
 		}
 	}
 
-	log.Println("All SQL scripts executed successfully")
+	logger.Info("All SQL scripts executed successfully")
 	return nil
 }

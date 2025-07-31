@@ -1,11 +1,12 @@
 package config
 
 import (
-	"log"
 	"os"
 	"strconv"
 
+	"github.com/alimgiray/gscope/pkg/logger"
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
@@ -42,7 +43,7 @@ var AppConfig *Config
 func Load() error {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables")
+		logger.Info("No .env file found, using environment variables")
 	}
 
 	AppConfig = &Config{
@@ -66,12 +67,14 @@ func Load() error {
 	}
 
 	// Log configuration (without sensitive data)
-	log.Printf("Configuration loaded:")
-	log.Printf("  Server Port: %s", AppConfig.Server.Port)
-	log.Printf("  Gin Mode: %s", AppConfig.Server.Mode)
-	log.Printf("  Database Path: %s", AppConfig.Database.Path)
-	log.Printf("  GitHub Client ID: %s", maskString(AppConfig.GitHub.ClientID))
-	log.Printf("  GitHub Callback URL: %s", AppConfig.GitHub.CallbackURL)
+	logger.Info("Configuration loaded")
+	logger.WithFields(logrus.Fields{
+		"server_port":     AppConfig.Server.Port,
+		"gin_mode":        AppConfig.Server.Mode,
+		"database_path":   AppConfig.Database.Path,
+		"github_client_id": maskString(AppConfig.GitHub.ClientID),
+		"github_callback": AppConfig.GitHub.CallbackURL,
+	}).Info("Application configuration")
 
 	return nil
 }

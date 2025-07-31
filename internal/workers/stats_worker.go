@@ -2,12 +2,13 @@ package workers
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/alimgiray/gscope/internal/repositories"
 	"github.com/alimgiray/gscope/internal/services"
+	"github.com/alimgiray/gscope/pkg/logger"
+	"github.com/sirupsen/logrus"
 )
 
 // StatsWorker handles stats jobs
@@ -36,21 +37,21 @@ func NewStatsWorker(
 // Start begins the stats worker process
 func (w *StatsWorker) Start(ctx context.Context) error {
 	w.Running = true
-	log.Printf("Stats worker %s started", w.WorkerID)
+	logger.WithField("worker_id", w.WorkerID).Info("Stats worker started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("Stats worker %s stopping due to context cancellation", w.WorkerID)
+			logger.WithField("worker_id", w.WorkerID).Info("Stats worker stopping due to context cancellation")
 			return ctx.Err()
 		case <-w.StopChan:
-			log.Printf("Stats worker %s stopping", w.WorkerID)
+			logger.WithField("worker_id", w.WorkerID).Info("Stats worker stopping")
 			return nil
 		default:
 			// Try to get a pending stats job
 			job, err := w.jobRepo.GetNextPendingJob(models.JobTypeStats, w.WorkerID)
 			if err != nil {
-				log.Printf("Stats worker %s error getting job: %v", w.WorkerID, err)
+				logger.WithField("worker_id", w.WorkerID).WithError(err).Error("Stats worker error getting job")
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -69,22 +70,34 @@ func (w *StatsWorker) Start(ctx context.Context) error {
 
 // processStatsJob handles the actual stats job processing
 func (w *StatsWorker) processStatsJob(ctx context.Context, job *models.Job) {
-	log.Printf("Stats worker %s processing job %s", w.WorkerID, job.ID)
+	logger.WithFields(logrus.Fields{
+		"worker_id": w.WorkerID,
+		"job_id":    job.ID,
+	}).Info("Stats worker processing job")
 
 	// Mark job as started
 	job.MarkStarted()
 	if err := w.jobRepo.Update(job); err != nil {
-		log.Printf("Stats worker %s error updating job %s: %v", w.WorkerID, job.ID, err)
+		logger.WithFields(logrus.Fields{
+			"worker_id": w.WorkerID,
+			"job_id":    job.ID,
+		}).WithError(err).Error("Stats worker error updating job")
 		return
 	}
 
 	// Process the stats job
 	if err := w.ProcessJob(ctx, job); err != nil {
-		log.Printf("Stats worker %s error processing job %s: %v", w.WorkerID, job.ID, err)
+		logger.WithFields(logrus.Fields{
+			"worker_id": w.WorkerID,
+			"job_id":    job.ID,
+		}).WithError(err).Error("Stats worker error processing job")
 		job.SetError(err.Error())
 		job.MarkFailed()
 		if err := w.jobRepo.Update(job); err != nil {
-			log.Printf("Stats worker %s error marking job %s as failed: %v", w.WorkerID, job.ID, err)
+			logger.WithFields(logrus.Fields{
+				"worker_id": w.WorkerID,
+				"job_id":    job.ID,
+			}).WithError(err).Error("Stats worker error marking job as failed")
 		}
 		return
 	}
@@ -92,16 +105,22 @@ func (w *StatsWorker) processStatsJob(ctx context.Context, job *models.Job) {
 	// Mark job as completed
 	job.MarkCompleted()
 	if err := w.jobRepo.Update(job); err != nil {
-		log.Printf("Stats worker %s error completing job %s: %v", w.WorkerID, job.ID, err)
+		logger.WithFields(logrus.Fields{
+			"worker_id": w.WorkerID,
+			"job_id":    job.ID,
+		}).WithError(err).Error("Stats worker error completing job")
 		return
 	}
 
-	log.Printf("Stats worker %s completed job %s", w.WorkerID, job.ID)
+	logger.WithFields(logrus.Fields{
+		"worker_id": w.WorkerID,
+		"job_id":    job.ID,
+	}).Info("Stats worker completed job")
 }
 
 // ProcessJob processes a stats job
 func (w *StatsWorker) ProcessJob(ctx context.Context, job *models.Job) error {
-	log.Printf("Processing stats job for project: %s", job.ProjectID)
+	logger.WithField("project_id", job.ProjectID).Info("Processing stats job for project")
 
 	// Check if this is a repository-specific job
 	if job.ProjectRepositoryID != nil {
@@ -116,13 +135,15 @@ func (w *StatsWorker) ProcessJob(ctx context.Context, job *models.Job) error {
 		}
 
 		// Clear existing statistics for this repository before recalculating
-		log.Printf("Clearing existing statistics for repository: %s", projectRepo.ID)
+		logger.WithField("repository_id", projectRepo.ID).Info("Clearing existing statistics for repository")
 		if err := w.peopleStatsService.DeleteStatisticsByRepository(projectRepo.ID); err != nil {
-			log.Printf("Warning: failed to clear existing statistics for repository %s: %v", projectRepo.ID, err)
+			logger.WithFields(logrus.Fields{
+				"repository_id": projectRepo.ID,
+			}).WithError(err).Warn("Failed to clear existing statistics for repository")
 			// Continue anyway - we'll recalculate from scratch
 		}
 
-		log.Printf("Calculating statistics for repository: %s", projectRepo.ID)
+		logger.WithField("repository_id", projectRepo.ID).Info("Calculating statistics for repository")
 		err = w.peopleStatsService.CalculateStatisticsForRepository(job.ProjectID, projectRepo.ID, projectRepo.GithubRepoID)
 		if err != nil {
 			return err
@@ -144,22 +165,28 @@ func (w *StatsWorker) ProcessJob(ctx context.Context, job *models.Job) error {
 			}
 
 			// Clear existing statistics for this repository before recalculating
-			log.Printf("Clearing existing statistics for repository: %s", projectRepo.ID)
+			logger.WithField("repository_id", projectRepo.ID).Info("Clearing existing statistics for repository")
 			if err := w.peopleStatsService.DeleteStatisticsByRepository(projectRepo.ID); err != nil {
-				log.Printf("Warning: failed to clear existing statistics for repository %s: %v", projectRepo.ID, err)
+				logger.WithFields(logrus.Fields{
+					"repository_id": projectRepo.ID,
+				}).WithError(err).Warn("Failed to clear existing statistics for repository")
 				// Continue anyway - we'll recalculate from scratch
 			}
 
-			log.Printf("Calculating statistics for repository: %s", projectRepo.ID)
+			logger.WithField("repository_id", projectRepo.ID).Info("Calculating statistics for repository")
 			if err := w.peopleStatsService.CalculateStatisticsForRepository(job.ProjectID, projectRepo.ID, projectRepo.GithubRepoID); err != nil {
-				log.Printf("Error calculating statistics for repository %s: %v", projectRepo.ID, err)
+				logger.WithFields(logrus.Fields{
+					"repository_id": projectRepo.ID,
+				}).WithError(err).Error("Error calculating statistics for repository")
 				continue
 			}
 
 			// Mark repository as analyzed after successful stats calculation
 			now := time.Now()
 			if err := w.projectRepositoryRepo.UpdateLastAnalyzed(projectRepo.ID, &now); err != nil {
-				log.Printf("Error updating analysis status for repository %s: %v", projectRepo.ID, err)
+				logger.WithFields(logrus.Fields{
+					"repository_id": projectRepo.ID,
+				}).WithError(err).Error("Error updating analysis status for repository")
 			}
 		}
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,9 @@ type ProjectHandler struct {
 	jobService                   *services.JobService
 	jobRepo                      *repositories.JobRepository
 	commitRepo                   *repositories.CommitRepository
+	commitFileRepo               *repositories.CommitFileRepository
+	pullRequestRepo              *repositories.PullRequestRepository
+	prReviewRepo                 *repositories.PRReviewRepository
 	githubPersonRepo             *repositories.GithubPersonRepository
 	personRepo                   *repositories.PersonRepository
 	emailMergeService            *services.EmailMergeService
@@ -41,7 +45,8 @@ type ProjectHandler struct {
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
 	scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService,
 	excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService,
-	jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository,
+	jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, pullRequestRepo *repositories.PullRequestRepository,
+	prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository,
 	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
 	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService,
 	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService) *ProjectHandler {
@@ -55,6 +60,9 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		jobService:                   jobService,
 		jobRepo:                      jobRepo,
 		commitRepo:                   commitRepo,
+		commitFileRepo:               commitFileRepo,
+		pullRequestRepo:              pullRequestRepo,
+		prReviewRepo:                 prReviewRepo,
 		githubPersonRepo:             githubPersonRepo,
 		personRepo:                   personRepo,
 		emailMergeService:            emailMergeService,
@@ -3000,4 +3008,371 @@ func (h *ProjectHandler) ViewPersonStats(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "person_stats", data)
+}
+
+// ViewRepository displays a specific repository within a project
+func (h *ProjectHandler) ViewRepository(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	repositoryID := c.Param("repository_id")
+
+	if projectID == "" || repositoryID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Invalid Request",
+			"User":  session,
+			"Error": "Project ID and Repository ID are required",
+		})
+		return
+	}
+
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "Project not found",
+		})
+		return
+	}
+
+	// Get project repository
+	projectRepo, err := h.githubRepoService.GetProjectRepository(repositoryID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Repository Not Found",
+			"User":  session,
+			"Error": "Repository not found",
+		})
+		return
+	}
+
+	// Verify the repository belongs to this project
+	if projectRepo.ProjectID != projectID {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "Repository does not belong to this project.",
+		})
+		return
+	}
+
+	// Get GitHub repository details
+	githubRepo, err := h.githubRepoService.GetGitHubRepository(projectRepo.GithubRepoID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Repository Not Found",
+			"User":  session,
+			"Error": "GitHub repository not found",
+		})
+		return
+	}
+
+	// Get all jobs for this repository
+	allJobs, err := h.jobService.GetProjectRepositoryJobs(projectRepo.ID)
+	if err != nil {
+		allJobs = []*models.Job{}
+	}
+
+	// Calculate job statuses
+	hasActiveCloneJobs := false
+	hasActiveAnalyzeJobs := false
+	hasCompletedPullRequestJobs := false
+	isRepositoryCloned := githubRepo.IsCloned
+	hasGitHubPeopleWithEmails := false
+
+	// Check for active clone or commit jobs
+	for _, job := range allJobs {
+		if job.JobType == models.JobTypeClone || job.JobType == models.JobTypeCommit {
+			if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+				hasActiveCloneJobs = true
+				break
+			}
+		}
+	}
+
+	// Check for active pull_request or stats jobs
+	for _, job := range allJobs {
+		if job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
+			if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+				hasActiveAnalyzeJobs = true
+				break
+			}
+		}
+	}
+
+	// Check for completed pull request jobs
+	for _, job := range allJobs {
+		if job.JobType == models.JobTypePullRequest && job.Status == models.JobStatusCompleted {
+			hasCompletedPullRequestJobs = true
+			break
+		}
+	}
+
+	// Check if there are GitHub people with emails for this project
+	githubPeopleWithEmails, err := h.githubPersonEmailService.GetGitHubPersonEmailsByProjectID(projectID)
+	if err == nil && len(githubPeopleWithEmails) > 0 {
+		hasGitHubPeopleWithEmails = true
+	}
+
+	// Get commit count and top commits for this repository
+	commitCount := 0
+	commits, err := h.commitRepo.GetByRepositoryID(githubRepo.ID)
+	if err == nil {
+		commitCount = len(commits)
+	}
+
+	// Get pull request count for this repository
+	prCount := 0
+	pullRequests, err := h.pullRequestRepo.GetByRepositoryID(githubRepo.ID)
+	if err == nil && pullRequests != nil {
+		prCount = len(pullRequests)
+	}
+
+	// Get repository statistics
+	repositoryStats := map[string]interface{}{
+		"TotalCommits":      commitCount,
+		"TotalPRs":          prCount,
+		"TotalContributors": 0, // Will be calculated
+		"MainLanguage":      githubRepo.Language,
+		"LastActivity":      "N/A",
+	}
+
+	// Calculate total contributors (unique authors)
+	if commits != nil {
+		contributors := make(map[string]bool)
+		for _, commit := range commits {
+			contributors[commit.AuthorName] = true
+		}
+		repositoryStats["TotalContributors"] = len(contributors)
+	}
+
+	// Get last activity date
+	if commits != nil && len(commits) > 0 {
+		lastCommit := commits[0] // Commits are ordered by date desc
+		repositoryStats["LastActivity"] = lastCommit.CommitDate.Format("2006-01-02 15:04")
+	}
+
+	// Get top 3 most modified files for this repository
+	var topModifiedFiles []map[string]interface{}
+	commitFiles, err := h.commitFileRepo.GetByRepositoryID(githubRepo.ID)
+	if err == nil && commitFiles != nil {
+		// Count commits per file
+		fileCommitCount := make(map[string]int)
+		fileNames := make(map[string]string)
+
+		for _, commitFile := range commitFiles {
+			fileCommitCount[commitFile.Filename]++
+			fileNames[commitFile.Filename] = commitFile.Filename
+		}
+
+		// Convert to slice for sorting
+		type fileStat struct {
+			Filename    string
+			CommitCount int
+		}
+
+		var fileStats []fileStat
+		for filename, count := range fileCommitCount {
+			fileStats = append(fileStats, fileStat{
+				Filename:    filename,
+				CommitCount: count,
+			})
+		}
+
+		// Sort by commit count and take top 3
+		sort.Slice(fileStats, func(i, j int) bool {
+			return fileStats[i].CommitCount > fileStats[j].CommitCount
+		})
+
+		limit := 3
+		if len(fileStats) < limit {
+			limit = len(fileStats)
+		}
+
+		for i := 0; i < limit; i++ {
+			fileStat := fileStats[i]
+			topModifiedFiles = append(topModifiedFiles, map[string]interface{}{
+				"Filename":    fileStat.Filename,
+				"CommitCount": fileStat.CommitCount,
+			})
+		}
+	}
+
+	// Get top 3 contributors by score for this repository (from people_statistics)
+	var topContributors []map[string]interface{}
+	peopleStats, err := h.peopleStatsService.GetStatisticsByRepository(projectRepo.ID)
+	if err == nil && peopleStats != nil {
+		// Aggregate people statistics by GitHub person
+		contributorStats := make(map[string]map[string]int)
+
+		for _, stat := range peopleStats {
+			// Get GitHub person details
+			githubPerson, err := h.githubPersonRepo.GetByID(stat.GithubPersonID)
+			if err == nil && githubPerson != nil {
+				username := githubPerson.Username
+
+				if contributorStats[username] == nil {
+					contributorStats[username] = map[string]int{
+						"Score":     0,
+						"Commits":   0,
+						"Additions": 0,
+						"Deletions": 0,
+					}
+				}
+
+				contributorStats[username]["Score"] += stat.Score
+				contributorStats[username]["Commits"] += stat.Commits
+				contributorStats[username]["Additions"] += stat.Additions
+				contributorStats[username]["Deletions"] += stat.Deletions
+			}
+		}
+
+		// Convert to slice for sorting
+		type contributor struct {
+			Name           string
+			GithubPersonID string
+			Score          int
+			Commits        int
+			Additions      int
+			Deletions      int
+		}
+
+		var contributors []contributor
+		for username, stats := range contributorStats {
+			// Find the GitHub person ID for this username
+			var githubPersonID string
+			for _, stat := range peopleStats {
+				githubPerson, err := h.githubPersonRepo.GetByID(stat.GithubPersonID)
+				if err == nil && githubPerson != nil && githubPerson.Username == username {
+					githubPersonID = stat.GithubPersonID
+					break
+				}
+			}
+
+			contributors = append(contributors, contributor{
+				Name:           username,
+				GithubPersonID: githubPersonID,
+				Score:          stats["Score"],
+				Commits:        stats["Commits"],
+				Additions:      stats["Additions"],
+				Deletions:      stats["Deletions"],
+			})
+		}
+
+		// Sort by score and take top 3
+		sort.Slice(contributors, func(i, j int) bool {
+			return contributors[i].Score > contributors[j].Score
+		})
+
+		limit := 3
+		if len(contributors) < limit {
+			limit = len(contributors)
+		}
+
+		for i := 0; i < limit; i++ {
+			contributor := contributors[i]
+			topContributors = append(topContributors, map[string]interface{}{
+				"Name":           contributor.Name,
+				"GithubPersonID": contributor.GithubPersonID,
+				"Score":          contributor.Score,
+				"Commits":        contributor.Commits,
+				"Additions":      contributor.Additions,
+				"Deletions":      contributor.Deletions,
+			})
+		}
+	}
+
+	// Fallback to raw commit calculation if people statistics not available
+	if len(topContributors) == 0 && commits != nil {
+		contributorScores := make(map[string]int)
+		contributorCommits := make(map[string]int)
+		contributorAdditions := make(map[string]int)
+		contributorDeletions := make(map[string]int)
+
+		for _, commit := range commits {
+			author := commit.AuthorName
+			contributorScores[author] += commit.Additions + commit.Deletions
+			contributorCommits[author]++
+			contributorAdditions[author] += commit.Additions
+			contributorDeletions[author] += commit.Deletions
+		}
+
+		// Convert to slice for sorting
+		type contributor struct {
+			Name      string
+			Score     int
+			Commits   int
+			Additions int
+			Deletions int
+		}
+
+		var contributors []contributor
+		for name, score := range contributorScores {
+			contributors = append(contributors, contributor{
+				Name:      name,
+				Score:     score,
+				Commits:   contributorCommits[name],
+				Additions: contributorAdditions[name],
+				Deletions: contributorDeletions[name],
+			})
+		}
+
+		// Sort by score and take top 3
+		sort.Slice(contributors, func(i, j int) bool {
+			return contributors[i].Score > contributors[j].Score
+		})
+
+		limit := 3
+		if len(contributors) < limit {
+			limit = len(contributors)
+		}
+
+		for i := 0; i < limit; i++ {
+			contributor := contributors[i]
+			topContributors = append(topContributors, map[string]interface{}{
+				"Name":      contributor.Name,
+				"Score":     contributor.Score,
+				"Commits":   contributor.Commits,
+				"Additions": contributor.Additions,
+				"Deletions": contributor.Deletions,
+			})
+		}
+	}
+
+	data := gin.H{
+		"Title":                       "Repository Details",
+		"User":                        session,
+		"Project":                     project,
+		"Repository":                  githubRepo,
+		"ProjectRepo":                 projectRepo,
+		"AccessType":                  accessType,
+		"HasActiveCloneJobs":          hasActiveCloneJobs,
+		"HasActiveAnalyzeJobs":        hasActiveAnalyzeJobs,
+		"HasCompletedPullRequestJobs": hasCompletedPullRequestJobs,
+		"IsRepositoryCloned":          isRepositoryCloned,
+		"HasGitHubPeopleWithEmails":   hasGitHubPeopleWithEmails,
+		"CommitCount":                 commitCount,
+		"RepositoryStats":             repositoryStats,
+		"TopModifiedFiles":            topModifiedFiles,
+		"TopContributors":             topContributors,
+	}
+
+	c.HTML(http.StatusOK, "repository_view", data)
 }

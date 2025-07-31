@@ -1045,6 +1045,11 @@ func (s *PeopleStatisticsService) calculateCommitStatsOptimized(
 			}
 
 			if isPersonCommit {
+				// Skip commits that start with "Revert"
+				if len(commit.Message) >= 6 && commit.Message[:6] == "Revert" {
+					continue
+				}
+
 				// Check if commit is on the specified date
 				commitYear, commitMonth, commitDay := commit.CommitDate.Date()
 				dateYear, dateMonth, dateDay := date.Date()

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,14 +17,18 @@ import (
 	"github.com/alimgiray/gscope/internal/workers"
 	"github.com/alimgiray/gscope/pkg/config"
 	"github.com/alimgiray/gscope/pkg/database"
+	"github.com/alimgiray/gscope/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v57/github"
 )
 
 func main() {
+	// Initialize logger
+	logger.Init()
+	
 	// Load configuration
 	if err := config.Load(); err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.WithError(err).Fatal("Failed to load config")
 	}
 
 	// Set Gin mode from config
@@ -33,7 +36,7 @@ func main() {
 
 	// Initialize database
 	if err := database.Init(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logger.WithError(err).Fatal("Failed to initialize database")
 	}
 	defer database.Close()
 
@@ -126,18 +129,18 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService)
 	loadTemplates(router)
 
 	// Start workers
 	if err := workerManager.StartAll(); err != nil {
-		log.Fatalf("Failed to start workers: %v", err)
+		logger.WithError(err).Fatal("Failed to start workers")
 	}
 	defer workerManager.StopAll()
 
 	// Start scheduler
 	schedulerService.StartScheduler()
-	log.Println("Automatic update scheduler started")
+	logger.Info("Automatic update scheduler started")
 
 	// Setup server
 	server := &http.Server{
@@ -147,9 +150,9 @@ func main() {
 
 	// Graceful shutdown
 	go func() {
-		log.Printf("Server starting on :%s", config.AppConfig.Server.Port)
+		logger.WithField("port", config.AppConfig.Server.Port).Info("Server starting")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed to start: %v", err)
+			logger.WithError(err).Fatal("Server failed to start")
 		}
 	}()
 
@@ -158,7 +161,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	logger.Info("Shutting down server...")
 
 	// Create a context with 2-second timeout for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -167,28 +170,28 @@ func main() {
 	// Handle multiple Ctrl+C presses - force shutdown after 2 seconds
 	go func() {
 		<-quit
-		log.Println("Force shutdown requested...")
+		logger.Info("Force shutdown requested...")
 		cancel() // Cancel the context to force immediate shutdown
 	}()
 
 	// Attempt graceful shutdown
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+		logger.WithError(err).Error("Server forced to shutdown")
 	}
 
 	// Stop all workers
 	workerManager.StopAll()
-	log.Println("Workers stopped")
+	logger.Info("Workers stopped")
 
-	log.Println("Server stopped")
+	logger.Info("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, pullRequestRepo *repositories.PullRequestRepository, prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService, projectCollaboratorService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -218,6 +221,7 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/emails/detach", projectHandler.DetachEmailMerge)
 		projects.GET("/:id/people", projectHandler.ViewProjectPeople)
 		projects.GET("/:id/people/:person_id", projectHandler.ViewPersonStats)
+		projects.GET("/:id/repositories/:repository_id", projectHandler.ViewRepository)
 		projects.POST("/:id/people/associate", projectHandler.CreateGitHubPersonEmailAssociation)
 		projects.POST("/:id/people/detach", projectHandler.DeleteGitHubPersonEmailAssociation)
 		projects.GET("/:id/reports", projectHandler.ViewProjectReports)
@@ -258,9 +262,9 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 func loadTemplates(router *gin.Engine) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		log.Fatal("Couldn't get working directory:", err)
+		logger.WithError(err).Fatal("Couldn't get working directory")
 	}
-	log.Println("Working dir:", cwd)
+	logger.WithField("working_dir", cwd).Info("Template loading")
 
 	// Add custom template functions
 	router.SetFuncMap(template.FuncMap{
@@ -288,5 +292,6 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/projects/reports_yearly.html"),
 		filepath.Join(cwd, "web/templates/projects/collaborators.html"),
 		filepath.Join(cwd, "web/templates/projects/person_stats.html"),
+		filepath.Join(cwd, "web/templates/projects/repository.html"),
 	)
 }
