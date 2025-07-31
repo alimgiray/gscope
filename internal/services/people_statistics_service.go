@@ -1091,6 +1091,10 @@ func (s *PeopleStatisticsService) calculateCommitStatsOptimized(
 							continue
 						}
 
+						if commitAdditions > 5000 && commitDeletions == 0 {
+							continue
+						}
+
 						totalCommits++
 						totalAdditions += commitAdditions
 						totalDeletions += commitDeletions
