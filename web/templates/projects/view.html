@@ -825,19 +825,30 @@ function retryFailedJob(jobId) {
     button.textContent = 'Retrying...';
     button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
     
-    fetch(`/jobs/${jobId}/retry`, {
+    fetch(`/projects/jobs/${jobId}/retry`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
     })
-    .then(response => response.json())
+    .then(response => {
+        if (response.redirected) {
+            // If the response is a redirect, follow it
+            window.location.href = response.url;
+        } else {
+            return response.json();
+        }
+    })
     .then(data => {
-        if (data.success) {
+        if (data && data.success) {
             showToast(data.message || 'Retry job created successfully', 'success');
+            // Change button to processing state since the job is now active
+            button.disabled = true;
+            button.textContent = 'Processing...';
+            button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
             // Start auto-refresh instead of immediate reload
             startAutoRefresh();
-        } else {
+        } else if (data) {
             // Restore button state on error
             button.disabled = false;
             button.textContent = originalText;
