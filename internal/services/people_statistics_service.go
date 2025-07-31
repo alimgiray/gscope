@@ -3,7 +3,6 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1338,26 +1337,16 @@ func (s *PeopleStatisticsService) GetPersonTopReposAndLanguages(projectID, githu
 
 	// Get repository details
 	for repoID := range repoStats {
-		log.Printf("Looking up project repository ID: %s", repoID)
 		// First get the project repository to get the GitHub repository ID
 		projectRepo, err := s.projectRepositoryRepo.GetByID(repoID)
 		if err == nil && projectRepo != nil {
-			log.Printf("Found project repository: %s -> GitHub repo ID: %s", repoID, projectRepo.GithubRepoID)
 			// Now get the GitHub repository details
 			repo, err := s.githubRepoRepo.GetByID(projectRepo.GithubRepoID)
 			if err == nil && repo != nil {
 				repoDetails[repoID] = repo
-				log.Printf("Found GitHub repository: %s -> %s", projectRepo.GithubRepoID, repo.Name)
-			} else {
-				log.Printf("Error looking up GitHub repository %s: %v", projectRepo.GithubRepoID, err)
 			}
-		} else {
-			log.Printf("Error looking up project repository %s: %v", repoID, err)
 		}
 	}
-
-	// Debug: log all repository details
-	log.Printf("Repository details map: %+v", repoDetails)
 
 	// Get top 3 repositories
 	var topRepos []map[string]interface{}
@@ -1365,9 +1354,6 @@ func (s *PeopleStatisticsService) GetPersonTopReposAndLanguages(projectID, githu
 		repoName := repoID
 		if repo, exists := repoDetails[repoID]; exists {
 			repoName = repo.Name
-			log.Printf("Using repository name: %s for ID: %s", repoName, repoID)
-		} else {
-			log.Printf("No repository found for ID: %s, using ID as name", repoID)
 		}
 
 		topRepos = append(topRepos, map[string]interface{}{
@@ -1390,32 +1376,22 @@ func (s *PeopleStatisticsService) GetPersonTopReposAndLanguages(projectID, githu
 
 	// Get all commits for this person in this project
 	commits, err := s.commitRepo.GetByProjectAndPerson(projectID, githubPersonID)
-	log.Printf("Found %d commits for person %s in project %s", len(commits), githubPersonID, projectID)
 
 	if err == nil {
 		for _, commit := range commits {
 			// Get commit files for this commit
 			commitFiles, err := s.commitFileRepo.GetByCommitID(commit.ID)
 			if err == nil {
-				log.Printf("Found %d files for commit %s", len(commitFiles), commit.ID)
 				for _, file := range commitFiles {
 					// Extract file extension and map to language
 					language := getLanguageFromFile(file.Filename)
 					if language != "" {
 						languageStats[language] += file.Additions + file.Deletions
-						log.Printf("Added %d LoC for language %s from file %s", file.Additions+file.Deletions, language, file.Filename)
 					}
 				}
-			} else {
-				log.Printf("Error getting commit files for commit %s: %v", commit.ID, err)
 			}
 		}
-	} else {
-		log.Printf("Error getting commits for person %s in project %s: %v", githubPersonID, projectID, err)
 	}
-
-	// Debug: log the language stats
-	log.Printf("Language stats for person %s in project %s: %+v", githubPersonID, projectID, languageStats)
 
 	// Convert to slice and sort by score
 	var topLanguages []map[string]interface{}
@@ -1436,7 +1412,6 @@ func (s *PeopleStatisticsService) GetPersonTopReposAndLanguages(projectID, githu
 
 	// If no languages found, provide some basic info
 	if len(topLanguages) == 0 {
-		log.Printf("No language data found, providing fallback")
 		topLanguages = []map[string]interface{}{
 			{"Name": "No language data", "Score": 0},
 		}
@@ -1481,9 +1456,7 @@ func (s *PeopleStatisticsService) GetPersonTopCommitsAndPRs(projectID, githubPer
 
 	// Get all PRs for this person in this project
 	prs, err := s.pullRequestRepo.GetByProjectAndPerson(projectID, githubPersonID)
-	log.Printf("Found %d PRs for person %s in project %s", len(prs), githubPersonID, projectID)
 	if err != nil {
-		log.Printf("Error getting PRs for person %s in project %s: %v", githubPersonID, projectID, err)
 		// If no PRs found, return empty list
 		return map[string]interface{}{
 			"TopCommits": topCommits,
@@ -1494,7 +1467,6 @@ func (s *PeopleStatisticsService) GetPersonTopCommitsAndPRs(projectID, githubPer
 	// Get the GitHub person to get their username
 	githubPerson, err := s.githubPersonRepo.GetByID(githubPersonID)
 	if err != nil {
-		log.Printf("Error getting GitHub person %s: %v", githubPersonID, err)
 		return map[string]interface{}{
 			"TopCommits": topCommits,
 			"TopPRs":     []map[string]interface{}{},
@@ -1510,25 +1482,19 @@ func (s *PeopleStatisticsService) GetPersonTopCommitsAndPRs(projectID, githubPer
 				if login, ok := userData["login"].(string); ok {
 					if login == githubPerson.Username {
 						filteredPRs = append(filteredPRs, pr)
-						log.Printf("Found PR %s by user %s", pr.ID, login)
 					}
 				}
 			}
 		}
 	}
-	log.Printf("Filtered to %d PRs for username %s", len(filteredPRs), githubPerson.Username)
 
 	// Get top 3 PRs by comment count
 	var topPRs []map[string]interface{}
 	for _, pr := range filteredPRs {
-		log.Printf("Processing PR %s (Number: %d, Title: %s)", pr.ID, pr.GithubPRNumber, pr.Title)
 		// Get comment count for this PR
 		commentCount, err := s.prReviewRepo.GetCommentCountByPRID(pr.ID)
 		if err != nil {
-			log.Printf("Error getting comment count for PR %s: %v", pr.ID, err)
 			commentCount = 0
-		} else {
-			log.Printf("PR %s has %d comments", pr.ID, commentCount)
 		}
 
 		topPRs = append(topPRs, map[string]interface{}{

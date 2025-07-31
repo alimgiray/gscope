@@ -29,10 +29,37 @@
             <a href="/projects/{{.Project.ID.String}}/people" class="text-blue-400 hover:text-blue-300 text-sm">← Back to People</a>
         </div>
 
+    <!-- Contribution Breakdown Section -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Contribution Breakdown</h3>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div class="bg-gray-700 rounded-lg p-3 text-center">
+                <div class="text-lg font-bold text-green-400">{{.DetailedStats.TotalCommits}}</div>
+                <div class="text-xs text-gray-400">Total Commits</div>
+            </div>
+            <div class="bg-gray-700 rounded-lg p-3 text-center">
+                <div class="text-lg font-bold text-blue-400">{{.DetailedStats.TotalAdditions}}</div>
+                <div class="text-xs text-gray-400">Lines Added</div>
+            </div>
+            <div class="bg-gray-700 rounded-lg p-3 text-center">
+                <div class="text-lg font-bold text-red-400">{{.DetailedStats.TotalDeletions}}</div>
+                <div class="text-xs text-gray-400">Lines Deleted</div>
+            </div>
+            <div class="bg-gray-700 rounded-lg p-3 text-center">
+                <div class="text-lg font-bold text-purple-400">{{.DetailedStats.TotalPullRequests}}</div>
+                <div class="text-xs text-gray-400">Pull Requests</div>
+            </div>
+            <div class="bg-gray-700 rounded-lg p-3 text-center">
+                <div class="text-lg font-bold text-yellow-400">{{.DetailedStats.TotalComments}}</div>
+                <div class="text-xs text-gray-400">Comments</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Weekly Averages Section -->
     <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
         <h3 class="text-lg font-semibold text-green-400 mb-4">Weekly Averages</h3>
-        <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <!-- Commits -->
             <div class="text-center p-3 bg-gray-700 rounded">
                 <div class="text-lg font-semibold text-blue-400">{{printf "%.1f" .WeeklyAverages.commits}}</div>
@@ -211,32 +238,7 @@
             </div>
         </div>
 
-        <!-- Contribution Breakdown -->
-        <div class="mb-6">
-            <h4 class="text-sm font-semibold text-yellow-400 mb-3">Contribution Breakdown</h4>
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div class="bg-gray-700 rounded-lg p-3 text-center">
-                    <div class="text-lg font-bold text-green-400">{{.DetailedStats.TotalCommits}}</div>
-                    <div class="text-xs text-gray-400">Total Commits</div>
-                </div>
-                <div class="bg-gray-700 rounded-lg p-3 text-center">
-                    <div class="text-lg font-bold text-blue-400">{{.DetailedStats.TotalAdditions}}</div>
-                    <div class="text-xs text-gray-400">Lines Added</div>
-                </div>
-                <div class="bg-gray-700 rounded-lg p-3 text-center">
-                    <div class="text-lg font-bold text-red-400">{{.DetailedStats.TotalDeletions}}</div>
-                    <div class="text-xs text-gray-400">Lines Deleted</div>
-                </div>
-                <div class="bg-gray-700 rounded-lg p-3 text-center">
-                    <div class="text-lg font-bold text-purple-400">{{.DetailedStats.TotalPullRequests}}</div>
-                    <div class="text-xs text-gray-400">Pull Requests</div>
-                </div>
-                <div class="bg-gray-700 rounded-lg p-3 text-center">
-                    <div class="text-lg font-bold text-yellow-400">{{.DetailedStats.TotalComments}}</div>
-                    <div class="text-xs text-gray-400">Comments</div>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Activity Timeline -->
         <div class="mb-6">
