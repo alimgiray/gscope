@@ -209,18 +209,40 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		latestCloneJobError := ""
 		failedCloneJobID := ""
 
-		// Check for active clone or commit jobs (commit depends on clone)
+		// Sort jobs by creation time to get the latest ones first
+		sort.Slice(allJobs, func(i, j int) bool {
+			return allJobs[i].CreatedAt.After(allJobs[j].CreatedAt)
+		})
+
+		// Find the latest clone job
+		var latestCloneJob *models.Job
 		for _, job := range allJobs {
-			if job.JobType == models.JobTypeClone || job.JobType == models.JobTypeCommit {
-				if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
-					hasActiveCloneJobs = true
-					break
+			if job.JobType == models.JobTypeClone {
+				latestCloneJob = job
+				break // Since jobs are sorted by creation time, this is the latest
+			}
+		}
+
+		// Check clone job status based on the latest clone job only
+		if latestCloneJob != nil {
+			if latestCloneJob.Status == models.JobStatusPending || latestCloneJob.Status == models.JobStatusInProgress {
+				hasActiveCloneJobs = true
+			} else if latestCloneJob.Status == models.JobStatusFailed {
+				latestCloneJobFailed = true
+				failedCloneJobID = latestCloneJob.ID
+				if latestCloneJob.ErrorMessage != nil {
+					latestCloneJobError = *latestCloneJob.ErrorMessage
 				}
-				if job.JobType == models.JobTypeClone && job.Status == models.JobStatusFailed {
-					latestCloneJobFailed = true
-					failedCloneJobID = job.ID
-					if job.ErrorMessage != nil {
-						latestCloneJobError = *job.ErrorMessage
+			}
+		}
+
+		// Also check for active commit jobs (commit depends on clone)
+		if !hasActiveCloneJobs {
+			for _, job := range allJobs {
+				if job.JobType == models.JobTypeCommit {
+					if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+						hasActiveCloneJobs = true
+						break
 					}
 				}
 			}
@@ -238,18 +260,40 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		latestAnalyzeJobError := ""
 		failedAnalyzeJobID := ""
 
-		// Check for active pull_request or stats jobs (stats depends on pull_request)
+		// Sort jobs by creation time to get the latest ones first
+		sort.Slice(repoJobs, func(i, j int) bool {
+			return repoJobs[i].CreatedAt.After(repoJobs[j].CreatedAt)
+		})
+
+		// Find the latest pull request job
+		var latestPullRequestJob *models.Job
 		for _, job := range repoJobs {
-			if job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
-				if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
-					hasActiveAnalyzeJobs = true
-					break
+			if job.JobType == models.JobTypePullRequest {
+				latestPullRequestJob = job
+				break // Since jobs are sorted by creation time, this is the latest
+			}
+		}
+
+		// Check analyze job status based on the latest pull request job only
+		if latestPullRequestJob != nil {
+			if latestPullRequestJob.Status == models.JobStatusPending || latestPullRequestJob.Status == models.JobStatusInProgress {
+				hasActiveAnalyzeJobs = true
+			} else if latestPullRequestJob.Status == models.JobStatusFailed {
+				latestAnalyzeJobFailed = true
+				failedAnalyzeJobID = latestPullRequestJob.ID
+				if latestPullRequestJob.ErrorMessage != nil {
+					latestAnalyzeJobError = *latestPullRequestJob.ErrorMessage
 				}
-				if job.JobType == models.JobTypePullRequest && job.Status == models.JobStatusFailed {
-					latestAnalyzeJobFailed = true
-					failedAnalyzeJobID = job.ID
-					if job.ErrorMessage != nil {
-						latestAnalyzeJobError = *job.ErrorMessage
+			}
+		}
+
+		// Also check for active stats jobs (stats depends on pull_request)
+		if !hasActiveAnalyzeJobs {
+			for _, job := range repoJobs {
+				if job.JobType == models.JobTypeStats {
+					if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+						hasActiveAnalyzeJobs = true
+						break
 					}
 				}
 			}
@@ -278,17 +322,27 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			}
 		}
 
-		// Get all failed jobs for this repository for display
+		// Get failed jobs for display - only show latest failed job for each type if it's actually the latest
 		var failedJobs []map[string]interface{}
-		for _, job := range allJobs {
-			if job.Status == models.JobStatusFailed {
-				failedJobs = append(failedJobs, map[string]interface{}{
-					"ID":           job.ID,
-					"JobType":      job.JobType,
-					"ErrorMessage": job.ErrorMessage,
-					"CreatedAt":    job.CreatedAt,
-				})
-			}
+
+		// Show latest clone job if it's failed
+		if latestCloneJobFailed && latestCloneJob != nil {
+			failedJobs = append(failedJobs, map[string]interface{}{
+				"ID":           latestCloneJob.ID,
+				"JobType":      latestCloneJob.JobType,
+				"ErrorMessage": latestCloneJob.ErrorMessage,
+				"CreatedAt":    latestCloneJob.CreatedAt,
+			})
+		}
+
+		// Show latest pull request job if it's failed
+		if latestAnalyzeJobFailed && latestPullRequestJob != nil {
+			failedJobs = append(failedJobs, map[string]interface{}{
+				"ID":           latestPullRequestJob.ID,
+				"JobType":      latestPullRequestJob.JobType,
+				"ErrorMessage": latestPullRequestJob.ErrorMessage,
+				"CreatedAt":    latestPullRequestJob.CreatedAt,
+			})
 		}
 
 		repositories = append(repositories, map[string]interface{}{
