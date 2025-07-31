@@ -275,6 +275,47 @@ func (r *CommitRepository) GetEmailStatsByProjectID(projectID string, mergedEmai
 	return emailStats, nil
 }
 
+// GetByProjectAndPerson retrieves commits for a specific person in a project
+func (r *CommitRepository) GetByProjectAndPerson(projectID, githubPersonID string) ([]*models.Commit, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// First get the person's email
+	query := `
+		SELECT c.id, c.github_repository_id, c.commit_sha, c.message, c.author_name, c.author_email,
+			   c.commit_date, c.is_merge_commit, c.merge_commit_sha, c.additions, c.deletions, c.changes, c.created_at
+		FROM commits c
+		INNER JOIN github_repositories gr ON c.github_repository_id = gr.id
+		INNER JOIN project_repositories pr ON gr.id = pr.github_repo_id
+		INNER JOIN github_people_emails gpe ON gpe.project_id = pr.project_id
+		INNER JOIN people p ON gpe.person_id = p.id AND c.author_email = p.primary_email
+		WHERE pr.project_id = ? AND gpe.github_person_id = ?
+		ORDER BY c.commit_date DESC
+	`
+
+	rows, err := r.db.Query(query, projectID, githubPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var commits []*models.Commit
+	for rows.Next() {
+		commit := &models.Commit{}
+		err := rows.Scan(
+			&commit.ID, &commit.GithubRepositoryID, &commit.CommitSHA, &commit.Message,
+			&commit.AuthorName, &commit.AuthorEmail, &commit.CommitDate, &commit.IsMergeCommit,
+			&commit.MergeCommitSHA, &commit.Additions, &commit.Deletions, &commit.Changes, &commit.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		commits = append(commits, commit)
+	}
+
+	return commits, nil
+}
+
 // Update updates an existing commit
 func (r *CommitRepository) Update(commit *models.Commit) error {
 	query := `

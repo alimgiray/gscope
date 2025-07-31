@@ -12,14 +12,16 @@ import (
 )
 
 type DashboardHandler struct {
-	userService    *services.UserService
-	projectService *services.ProjectService
+	userService                *services.UserService
+	projectService             *services.ProjectService
+	projectCollaboratorService *services.ProjectCollaboratorService
 }
 
-func NewDashboardHandler(userService *services.UserService, projectService *services.ProjectService) *DashboardHandler {
+func NewDashboardHandler(userService *services.UserService, projectService *services.ProjectService, projectCollaboratorService *services.ProjectCollaboratorService) *DashboardHandler {
 	return &DashboardHandler{
-		userService:    userService,
-		projectService: projectService,
+		userService:                userService,
+		projectService:             projectService,
+		projectCollaboratorService: projectCollaboratorService,
 	}
 }
 
@@ -40,11 +42,21 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 		}
 	}
 
-	// Get user's projects
-	projects, err := h.projectService.GetProjectsByOwnerID(session.UserID)
+	// Get user's accessible projects (owned + collaborated)
+	projects, err := h.projectCollaboratorService.GetUserAccessibleProjects(session.UserID)
 	if err != nil {
 		// If error fetching projects, just show empty list
 		projects = []*models.Project{}
+	}
+
+	// Create a map to store project access types
+	projectAccessTypes := make(map[string]string)
+	for _, project := range projects {
+		accessType, err := h.projectCollaboratorService.GetProjectAccessType(project.ID.String(), session.UserID)
+		if err != nil {
+			accessType = "unknown"
+		}
+		projectAccessTypes[project.ID.String()] = accessType
 	}
 
 	// Sort projects alphabetically by name
@@ -53,9 +65,10 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 	})
 
 	data := gin.H{
-		"Title":    "Dashboard",
-		"User":     user,
-		"Projects": projects,
+		"Title":              "Dashboard",
+		"User":               user,
+		"Projects":           projects,
+		"ProjectAccessTypes": projectAccessTypes,
 	}
 
 	c.HTML(http.StatusOK, "dashboard", data)

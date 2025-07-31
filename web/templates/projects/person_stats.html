@@ -1,0 +1,362 @@
+{{define "person_stats"}}
+{{template "header" .}}
+
+<div class="container mx-auto px-4 py-8">
+    <!-- Person Info Card -->
+        <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-4">
+                {{if .Person.AvatarURL}}
+                    <img src="{{.Person.AvatarURL}}" alt="{{.Person.Username}}" class="w-16 h-16 rounded-full">
+                {{else}}
+                    <div class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-semibold text-xl">{{slice .Person.Username 0 1}}</span>
+                    </div>
+                {{end}}
+                <div>
+                    <h2 class="text-xl font-semibold text-white">{{.Person.Username}}</h2>
+                    {{if .Person.DisplayName}}
+                        <p class="text-gray-300">{{.Person.DisplayName}}</p>
+                    {{end}}
+                    {{if .Person.Type}}
+                        <span class="text-xs bg-gray-600 text-white px-2 py-1 rounded">{{.Person.Type}}</span>
+                    {{end}}
+                    {{if .Person.ProfileURL}}
+                        <a href="{{.Person.ProfileURL}}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm">View GitHub Profile</a>
+                    {{end}}
+                </div>
+            </div>
+            <a href="/projects/{{.Project.ID.String}}/people" class="text-blue-400 hover:text-blue-300 text-sm">← Back to People</a>
+        </div>
+
+    <!-- Weekly Averages Section -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Weekly Averages</h3>
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <!-- Commits -->
+            <div class="text-center p-3 bg-gray-700 rounded">
+                <div class="text-lg font-semibold text-blue-400">{{printf "%.1f" .WeeklyAverages.commits}}</div>
+                <div class="text-xs text-gray-400">Commits</div>
+            </div>
+            
+            <!-- Additions -->
+            <div class="text-center p-3 bg-gray-700 rounded">
+                <div class="text-lg font-semibold text-green-400">{{printf "%.0f" .WeeklyAverages.additions}}</div>
+                <div class="text-xs text-gray-400">Additions</div>
+            </div>
+            
+            <!-- Deletions -->
+            <div class="text-center p-3 bg-gray-700 rounded">
+                <div class="text-lg font-semibold text-red-400">{{printf "%.0f" .WeeklyAverages.deletions}}</div>
+                <div class="text-xs text-gray-400">Deletions</div>
+            </div>
+            
+            <!-- Pull Requests -->
+            <div class="text-center p-3 bg-gray-700 rounded">
+                <div class="text-lg font-semibold text-purple-400">{{printf "%.1f" .WeeklyAverages.pull_requests}}</div>
+                <div class="text-xs text-gray-400">Pull Requests</div>
+            </div>
+            
+            <!-- Comments -->
+            <div class="text-center p-3 bg-gray-700 rounded">
+                <div class="text-lg font-semibold text-yellow-400">{{printf "%.1f" .WeeklyAverages.comments}}</div>
+                <div class="text-xs text-gray-400">Comments</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Score History Graph -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Score History</h3>
+        <div class="w-full h-64">
+            <canvas id="scoreChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Top Repositories and Languages -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Top Contributions</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Top Repositories -->
+            <div>
+                <h4 class="text-sm font-semibold text-blue-400 mb-3">Top Repositories</h4>
+                {{if .TopReposAndLanguages.TopRepos}}
+                    <div class="space-y-3">
+                        {{range $index, $repo := .TopReposAndLanguages.TopRepos}}
+                        <div class="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="text-lg font-bold text-green-400">#{{$index | add1}}</div>
+                                <div>
+                                    <div class="text-sm font-semibold text-white">{{$repo.Name}}</div>
+                                    <div class="text-xs text-gray-400">{{$repo.Score}} points</div>
+                                </div>
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                {{else}}
+                    <div class="text-center py-4">
+                        <div class="text-gray-400 text-sm">No repository data available</div>
+                    </div>
+                {{end}}
+            </div>
+
+            <!-- Top Languages -->
+            <div>
+                <h4 class="text-sm font-semibold text-purple-400 mb-3">Top Languages</h4>
+                {{if .TopReposAndLanguages.TopLanguages}}
+                    <div class="space-y-3">
+                        {{range $index, $lang := .TopReposAndLanguages.TopLanguages}}
+                        <div class="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="text-lg font-bold text-green-400">#{{$index | add1}}</div>
+                                <div>
+                                    <div class="text-sm font-semibold text-white">{{$lang.Name}}</div>
+                                    <div class="text-xs text-gray-400">{{$lang.Score}} points</div>
+                                </div>
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                {{else}}
+                    <div class="text-center py-4">
+                        <div class="text-gray-400 text-sm">No language data available</div>
+                    </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Commits and PRs -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Top Contributions</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Top Commits -->
+            <div>
+                <h4 class="text-sm font-semibold text-blue-400 mb-3">Top Commits (by LoC)</h4>
+                {{if .TopCommitsAndPRs.TopCommits}}
+                    <div class="space-y-3">
+                        {{range $index, $commit := .TopCommitsAndPRs.TopCommits}}
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-lg font-bold text-green-400">#{{$index | add1}}</div>
+                                <div class="text-xs text-gray-400">{{$commit.Date}}</div>
+                            </div>
+                            <div class="text-sm font-semibold text-white mb-1">{{$commit.Message}}</div>
+                            <div class="flex items-center gap-4 text-xs text-gray-400">
+                                <span>SHA: {{$commit.SHA}}</span>
+                                <span class="text-green-400">+{{$commit.Additions}}</span>
+                                <span class="text-red-400">-{{$commit.Deletions}}</span>
+                                <span class="text-blue-400">{{$commit.LoC}} LoC</span>
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                {{else}}
+                    <div class="text-center py-4">
+                        <div class="text-gray-400 text-sm">No commit data available</div>
+                    </div>
+                {{end}}
+            </div>
+
+            <!-- Top PRs -->
+            <div>
+                <h4 class="text-sm font-semibold text-purple-400 mb-3">Top Pull Requests (by Comments)</h4>
+                {{if .TopCommitsAndPRs.TopPRs}}
+                    <div class="space-y-3">
+                        {{range $index, $pr := .TopCommitsAndPRs.TopPRs}}
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-lg font-bold text-green-400">#{{$index | add1}}</div>
+                                <div class="text-xs text-gray-400">{{$pr.CreatedAt}}</div>
+                            </div>
+                            <div class="text-sm font-semibold text-white mb-1">{{$pr.Title}}</div>
+                            <div class="flex items-center gap-4 text-xs text-gray-400">
+                                <span>#{{$pr.Number}}</span>
+                                <span class="text-yellow-400">{{$pr.Comments}} comments</span>
+                                <span class="text-{{if eq $pr.State "open"}}green{{else if eq $pr.State "closed"}}red{{else}}gray{{end}}-400">{{$pr.State}}</span>
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                {{else}}
+                    <div class="text-center py-4">
+                        <div class="text-gray-400 text-sm">No pull request data available</div>
+                    </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Statistics Section -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Detailed Statistics</h3>
+        
+        <!-- Activity Patterns -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <!-- Most Active Month -->
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-blue-400 mb-2">Peak Performance</h4>
+                <div class="text-2xl font-bold text-white mb-1">{{.DetailedStats.PeakMonth}}</div>
+                <div class="text-xs text-gray-400">Highest scoring month</div>
+            </div>
+            
+            <!-- Consistency Score -->
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-green-400 mb-2">Consistency</h4>
+                <div class="text-2xl font-bold text-white mb-1">{{.DetailedStats.ConsistencyScore}}%</div>
+                <div class="text-xs text-gray-400">Months with activity</div>
+            </div>
+        </div>
+
+        <!-- Contribution Breakdown -->
+        <div class="mb-6">
+            <h4 class="text-sm font-semibold text-yellow-400 mb-3">Contribution Breakdown</h4>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div class="bg-gray-700 rounded-lg p-3 text-center">
+                    <div class="text-lg font-bold text-green-400">{{.DetailedStats.TotalCommits}}</div>
+                    <div class="text-xs text-gray-400">Total Commits</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-3 text-center">
+                    <div class="text-lg font-bold text-blue-400">{{.DetailedStats.TotalAdditions}}</div>
+                    <div class="text-xs text-gray-400">Lines Added</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-3 text-center">
+                    <div class="text-lg font-bold text-red-400">{{.DetailedStats.TotalDeletions}}</div>
+                    <div class="text-xs text-gray-400">Lines Deleted</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-3 text-center">
+                    <div class="text-lg font-bold text-purple-400">{{.DetailedStats.TotalPullRequests}}</div>
+                    <div class="text-xs text-gray-400">Pull Requests</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-3 text-center">
+                    <div class="text-lg font-bold text-yellow-400">{{.DetailedStats.TotalComments}}</div>
+                    <div class="text-xs text-gray-400">Comments</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Timeline -->
+        <div class="mb-6">
+            <h4 class="text-sm font-semibold text-purple-400 mb-3">Activity Timeline</h4>
+            <div class="bg-gray-700 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs text-gray-400">First Activity</span>
+                    <span class="text-xs text-white">{{.DetailedStats.FirstActivity}}</span>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs text-gray-400">Latest Activity</span>
+                    <span class="text-xs text-white">{{.DetailedStats.LastActivity}}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-400">Active Duration</span>
+                    <span class="text-xs text-white">{{.DetailedStats.ActiveDuration}}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-green-400 mb-2">Commit Size</h4>
+                <div class="text-lg font-bold text-white mb-1">{{.DetailedStats.CommitSizeScore}}</div>
+                <div class="text-xs text-gray-400">Lines per commit</div>
+            </div>
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-blue-400 mb-2">Refactor Ratio</h4>
+                <div class="text-lg font-bold text-white mb-1">{{.DetailedStats.RefactorRatioScore}}%</div>
+                <div class="text-xs text-gray-400">Deletions vs additions</div>
+            </div>
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-yellow-400 mb-2">Engagement</h4>
+                <div class="text-lg font-bold text-white mb-1">{{.DetailedStats.EngagementScore}}</div>
+                <div class="text-xs text-gray-400">PRs + Comments per month</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const scoreData = JSON.parse('{{.ScoreHistoryJSON}}');
+    
+    if (scoreData && scoreData.length > 0) {
+        const ctx = document.getElementById('scoreChart').getContext('2d');
+        
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: scoreData.map(function(item) { return item.date; }),
+                datasets: [{
+                    label: 'Monthly Score',
+                    data: scoreData.map(function(item) { return item.score; }),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Month',
+                            color: '#9ca3af'
+                        },
+                        ticks: {
+                            color: '#9ca3af'
+                        },
+                        grid: {
+                            color: '#374151'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Score',
+                            color: '#9ca3af'
+                        },
+                        ticks: {
+                            color: '#9ca3af'
+                        },
+                        grid: {
+                            color: '#374151'
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        // Show message if no data
+        const canvas = document.getElementById('scoreChart');
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('No score data available', canvas.width / 2, canvas.height / 2);
+    }
+});
+</script>
+
+{{template "footer" .}}
+{{end}} 

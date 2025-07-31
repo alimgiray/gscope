@@ -217,3 +217,19 @@ func (r *PRReviewRepository) Upsert(review *models.PRReview) error {
 
 	return tx.Commit()
 }
+
+// GetCommentCountByPRID returns the number of comments for a specific PR
+func (r *PRReviewRepository) GetCommentCountByPRID(prID string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	query := `SELECT COUNT(*) FROM pr_reviews WHERE pull_request_id = ?`
+
+	var count int
+	err := r.db.QueryRow(query, prID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}

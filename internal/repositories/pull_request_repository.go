@@ -217,3 +217,43 @@ func (r *PullRequestRepository) GetOpenPRNumbersByRepositoryID(repositoryID stri
 
 	return prNumbers, nil
 }
+
+// GetByProjectAndPerson retrieves PRs for a specific person in a project
+func (r *PullRequestRepository) GetByProjectAndPerson(projectID, githubPersonID string) ([]*models.PullRequest, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	query := `
+		SELECT pr.*
+		FROM pull_requests pr
+		INNER JOIN github_repositories gr ON pr.repository_id = gr.id
+		INNER JOIN project_repositories prj ON gr.id = prj.github_repo_id
+		INNER JOIN github_people_emails gpe ON gpe.project_id = prj.project_id
+		INNER JOIN github_people gp ON gpe.github_person_id = gp.id
+		WHERE prj.project_id = ? AND gpe.github_person_id = ?
+		ORDER BY pr.github_created_at DESC
+	`
+
+	rows, err := r.db.Query(query, projectID, githubPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pullRequests []*models.PullRequest
+	for rows.Next() {
+		var pr models.PullRequest
+		err := rows.Scan(
+			&pr.ID, &pr.RepositoryID, &pr.GithubPRNumber, &pr.GithubPRID, &pr.Title, &pr.Body,
+			&pr.State, &pr.MergedAt, &pr.MergeCommitSHA, &pr.ClosedAt, &pr.User,
+			&pr.RequestedReviewers, &pr.RequestedTeams, &pr.Draft, &pr.GithubCreatedAt,
+			&pr.GithubUpdatedAt, &pr.CreatedAt, &pr.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		pullRequests = append(pullRequests, &pr)
+	}
+
+	return pullRequests, nil
+}

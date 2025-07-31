@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -76,6 +77,7 @@ func main() {
 
 	// People statistics service
 	peopleStatsRepo := repositories.NewPeopleStatisticsRepository(database.DB)
+	projectRepositoryRepo := repositories.NewProjectRepositoryRepository(database.DB)
 	peopleStatsService := services.NewPeopleStatisticsService(
 		peopleStatsRepo,
 		commitRepo,
@@ -89,11 +91,17 @@ func main() {
 		scoreSettingsRepo,
 		excludedExtensionRepo,
 		excludedFolderRepo,
+		githubRepoRepo,
+		projectRepositoryRepo,
 	)
 
 	// Project update settings service
 	projectUpdateSettingsRepo := repositories.NewProjectUpdateSettingsRepository(database.DB)
 	projectUpdateSettingsService := services.NewProjectUpdateSettingsService(projectUpdateSettingsRepo)
+
+	// Project collaborator service
+	projectCollaboratorRepo := repositories.NewProjectCollaboratorRepository(database.DB)
+	projectCollaboratorService := services.NewProjectCollaboratorService(projectCollaboratorRepo, userRepo, projectRepo)
 
 	// Scheduler service
 	schedulerService := services.NewSchedulerService(projectUpdateSettingsRepo, jobRepo, githubRepoService)
@@ -118,7 +126,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService)
 	loadTemplates(router)
 
 	// Start workers
@@ -175,12 +183,12 @@ func main() {
 	log.Println("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
-	dashboardHandler := handlers.NewDashboardHandler(userService, projectService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService)
+	dashboardHandler := handlers.NewDashboardHandler(userService, projectService, projectCollaboratorService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService)
 	healthHandler := handlers.NewHealthHandler()
 
 	// Home page
@@ -209,6 +217,7 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/emails/merge", projectHandler.CreateEmailMerge)
 		projects.POST("/:id/emails/detach", projectHandler.DetachEmailMerge)
 		projects.GET("/:id/people", projectHandler.ViewProjectPeople)
+		projects.GET("/:id/people/:person_id", projectHandler.ViewPersonStats)
 		projects.POST("/:id/people/associate", projectHandler.CreateGitHubPersonEmailAssociation)
 		projects.POST("/:id/people/detach", projectHandler.DeleteGitHubPersonEmailAssociation)
 		projects.GET("/:id/reports", projectHandler.ViewProjectReports)
@@ -236,6 +245,9 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/settings/folders/:folder_id/delete", projectHandler.DeleteExcludedFolder)
 		projects.POST("/:id/settings/update-settings", projectHandler.UpdateProjectUpdateSettings)
 		projects.POST("/:id/settings/delete", projectHandler.DeleteProject)
+		projects.GET("/:id/collaborators", projectHandler.ViewProjectCollaborators)
+		projects.POST("/:id/collaborators/add", projectHandler.AddProjectCollaborator)
+		projects.POST("/:id/collaborators/remove", projectHandler.RemoveProjectCollaborator)
 		projects.POST("/jobs/:job_id/retry", projectHandler.RetryFailedJob)
 	}
 
@@ -249,6 +261,13 @@ func loadTemplates(router *gin.Engine) {
 		log.Fatal("Couldn't get working directory:", err)
 	}
 	log.Println("Working dir:", cwd)
+
+	// Add custom template functions
+	router.SetFuncMap(template.FuncMap{
+		"add1": func(i int) int {
+			return i + 1
+		},
+	})
 
 	router.LoadHTMLFiles(
 		filepath.Join(cwd, "web/templates/layouts/header.html"),
@@ -267,5 +286,7 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/projects/reports_weekly.html"),
 		filepath.Join(cwd, "web/templates/projects/reports_monthly.html"),
 		filepath.Join(cwd, "web/templates/projects/reports_yearly.html"),
+		filepath.Join(cwd, "web/templates/projects/collaborators.html"),
+		filepath.Join(cwd, "web/templates/projects/person_stats.html"),
 	)
 }

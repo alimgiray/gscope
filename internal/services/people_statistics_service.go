@@ -3,7 +3,10 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/alimgiray/gscope/internal/models"
@@ -24,6 +27,8 @@ type PeopleStatisticsService struct {
 	scoreSettingsRepo     *repositories.ScoreSettingsRepository
 	excludedExtRepo       *repositories.ExcludedExtensionRepository
 	excludedFolderRepo    *repositories.ExcludedFolderRepository
+	githubRepoRepo        *repositories.GitHubRepositoryRepository
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository
 }
 
 func NewPeopleStatisticsService(
@@ -39,6 +44,8 @@ func NewPeopleStatisticsService(
 	scoreSettingsRepo *repositories.ScoreSettingsRepository,
 	excludedExtRepo *repositories.ExcludedExtensionRepository,
 	excludedFolderRepo *repositories.ExcludedFolderRepository,
+	githubRepoRepo *repositories.GitHubRepositoryRepository,
+	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
 ) *PeopleStatisticsService {
 	return &PeopleStatisticsService{
 		peopleStatsRepo:       peopleStatsRepo,
@@ -53,6 +60,8 @@ func NewPeopleStatisticsService(
 		scoreSettingsRepo:     scoreSettingsRepo,
 		excludedExtRepo:       excludedExtRepo,
 		excludedFolderRepo:    excludedFolderRepo,
+		githubRepoRepo:        githubRepoRepo,
+		projectRepositoryRepo: projectRepositoryRepo,
 	}
 }
 
@@ -1183,4 +1192,522 @@ func (s *PeopleStatisticsService) calculateScore(
 	score += comments * scoreSettings.Comments
 
 	return score
+}
+
+// GetPersonWeeklyAverages calculates weekly averages for a specific person in a project
+func (s *PeopleStatisticsService) GetPersonWeeklyAverages(projectID, githubPersonID string) (map[string]float64, error) {
+	// Get all statistics for this person in this project
+	stats, err := s.peopleStatsRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person statistics: %w", err)
+	}
+
+	if len(stats) == 0 {
+		// Return zero averages if no data
+		return map[string]float64{
+			"commits":       0,
+			"additions":     0,
+			"deletions":     0,
+			"comments":      0,
+			"pull_requests": 0,
+		}, nil
+	}
+
+	// Calculate totals
+	var totalCommits, totalAdditions, totalDeletions, totalComments, totalPullRequests int
+	for _, stat := range stats {
+		totalCommits += stat.Commits
+		totalAdditions += stat.Additions
+		totalDeletions += stat.Deletions
+		totalComments += stat.Comments
+		totalPullRequests += stat.PullRequests
+	}
+
+	// Calculate weeks (minimum 1 week)
+	weeks := 1
+	if len(stats) > 0 {
+		// Calculate the date range
+		earliestDate := stats[0].StatDate
+		latestDate := stats[0].StatDate
+
+		for _, stat := range stats {
+			if stat.StatDate.Before(earliestDate) {
+				earliestDate = stat.StatDate
+			}
+			if stat.StatDate.After(latestDate) {
+				latestDate = stat.StatDate
+			}
+		}
+
+		// Calculate weeks between earliest and latest date
+		daysDiff := int(latestDate.Sub(earliestDate).Hours() / 24)
+		weeks = (daysDiff / 7) + 1 // Add 1 to include the current week
+		if weeks < 1 {
+			weeks = 1
+		}
+	}
+
+	// Calculate weekly averages
+	averages := map[string]float64{
+		"commits":       float64(totalCommits) / float64(weeks),
+		"additions":     float64(totalAdditions) / float64(weeks),
+		"deletions":     float64(totalDeletions) / float64(weeks),
+		"comments":      float64(totalComments) / float64(weeks),
+		"pull_requests": float64(totalPullRequests) / float64(weeks),
+	}
+
+	return averages, nil
+}
+
+// GetPersonScoreHistory returns the person's score history for graphing
+func (s *PeopleStatisticsService) GetPersonScoreHistory(projectID, githubPersonID string) ([]map[string]interface{}, error) {
+	// Get all statistics for this person in this project
+	stats, err := s.peopleStatsRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person statistics: %w", err)
+	}
+
+	if len(stats) == 0 {
+		return []map[string]interface{}{}, nil
+	}
+
+	// Sort by date
+	sort.Slice(stats, func(i, j int) bool {
+		return stats[i].StatDate.Before(stats[j].StatDate)
+	})
+
+	// Group by month and calculate monthly score
+	var result []map[string]interface{}
+
+	// Find the first commit date
+	firstDate := stats[0].StatDate
+	firstMonth := time.Date(firstDate.Year(), firstDate.Month(), 1, 0, 0, 0, 0, firstDate.Location())
+
+	// Initialize monthly data starting from the first month
+	currentMonth := firstMonth
+	lastMonth := time.Now()
+	lastMonth = time.Date(lastMonth.Year(), lastMonth.Month(), 1, 0, 0, 0, 0, lastMonth.Location())
+
+	// Process each month from first commit to current month
+	for currentMonth.Before(lastMonth) || currentMonth.Equal(lastMonth) {
+		monthlyScore := 0
+
+		// Add scores for this month
+		for _, stat := range stats {
+			statMonth := time.Date(stat.StatDate.Year(), stat.StatDate.Month(), 1, 0, 0, 0, 0, stat.StatDate.Location())
+			if statMonth.Equal(currentMonth) {
+				monthlyScore += stat.Score
+			}
+		}
+
+		// Add to result
+		result = append(result, map[string]interface{}{
+			"date":  currentMonth.Format("2006-01"),
+			"score": monthlyScore,
+		})
+
+		// Move to next month
+		currentMonth = currentMonth.AddDate(0, 1, 0)
+	}
+
+	return result, nil
+}
+
+// GetPersonTopReposAndLanguages returns top repositories and languages for a person
+func (s *PeopleStatisticsService) GetPersonTopReposAndLanguages(projectID, githubPersonID string) (map[string]interface{}, error) {
+	// Get all statistics for this person in this project
+	stats, err := s.peopleStatsRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person statistics: %w", err)
+	}
+
+	if len(stats) == 0 {
+		return map[string]interface{}{
+			"TopRepos":     []map[string]interface{}{},
+			"TopLanguages": []map[string]interface{}{},
+		}, nil
+	}
+
+	// Group by repository and get repository details
+	repoStats := make(map[string]int)
+	repoDetails := make(map[string]*models.GitHubRepository)
+
+	for _, stat := range stats {
+		repoStats[stat.RepositoryID] += stat.Score
+	}
+
+	// Get repository details
+	for repoID := range repoStats {
+		log.Printf("Looking up project repository ID: %s", repoID)
+		// First get the project repository to get the GitHub repository ID
+		projectRepo, err := s.projectRepositoryRepo.GetByID(repoID)
+		if err == nil && projectRepo != nil {
+			log.Printf("Found project repository: %s -> GitHub repo ID: %s", repoID, projectRepo.GithubRepoID)
+			// Now get the GitHub repository details
+			repo, err := s.githubRepoRepo.GetByID(projectRepo.GithubRepoID)
+			if err == nil && repo != nil {
+				repoDetails[repoID] = repo
+				log.Printf("Found GitHub repository: %s -> %s", projectRepo.GithubRepoID, repo.Name)
+			} else {
+				log.Printf("Error looking up GitHub repository %s: %v", projectRepo.GithubRepoID, err)
+			}
+		} else {
+			log.Printf("Error looking up project repository %s: %v", repoID, err)
+		}
+	}
+
+	// Debug: log all repository details
+	log.Printf("Repository details map: %+v", repoDetails)
+
+	// Get top 3 repositories
+	var topRepos []map[string]interface{}
+	for repoID, score := range repoStats {
+		repoName := repoID
+		if repo, exists := repoDetails[repoID]; exists {
+			repoName = repo.Name
+			log.Printf("Using repository name: %s for ID: %s", repoName, repoID)
+		} else {
+			log.Printf("No repository found for ID: %s, using ID as name", repoID)
+		}
+
+		topRepos = append(topRepos, map[string]interface{}{
+			"ID":    repoID,
+			"Name":  repoName,
+			"Score": score,
+		})
+	}
+
+	// Sort by score and take top 3
+	sort.Slice(topRepos, func(i, j int) bool {
+		return topRepos[i]["Score"].(int) > topRepos[j]["Score"].(int)
+	})
+	if len(topRepos) > 3 {
+		topRepos = topRepos[:3]
+	}
+
+	// Get actual language data from commit files
+	languageStats := make(map[string]int)
+
+	// Get all commits for this person in this project
+	commits, err := s.commitRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	log.Printf("Found %d commits for person %s in project %s", len(commits), githubPersonID, projectID)
+
+	if err == nil {
+		for _, commit := range commits {
+			// Get commit files for this commit
+			commitFiles, err := s.commitFileRepo.GetByCommitID(commit.ID)
+			if err == nil {
+				log.Printf("Found %d files for commit %s", len(commitFiles), commit.ID)
+				for _, file := range commitFiles {
+					// Extract file extension and map to language
+					language := getLanguageFromFile(file.Filename)
+					if language != "" {
+						languageStats[language] += file.Additions + file.Deletions
+						log.Printf("Added %d LoC for language %s from file %s", file.Additions+file.Deletions, language, file.Filename)
+					}
+				}
+			} else {
+				log.Printf("Error getting commit files for commit %s: %v", commit.ID, err)
+			}
+		}
+	} else {
+		log.Printf("Error getting commits for person %s in project %s: %v", githubPersonID, projectID, err)
+	}
+
+	// Debug: log the language stats
+	log.Printf("Language stats for person %s in project %s: %+v", githubPersonID, projectID, languageStats)
+
+	// Convert to slice and sort by score
+	var topLanguages []map[string]interface{}
+	for lang, score := range languageStats {
+		topLanguages = append(topLanguages, map[string]interface{}{
+			"Name":  lang,
+			"Score": score,
+		})
+	}
+
+	// Sort by score and take top 3
+	sort.Slice(topLanguages, func(i, j int) bool {
+		return topLanguages[i]["Score"].(int) > topLanguages[j]["Score"].(int)
+	})
+	if len(topLanguages) > 3 {
+		topLanguages = topLanguages[:3]
+	}
+
+	// If no languages found, provide some basic info
+	if len(topLanguages) == 0 {
+		log.Printf("No language data found, providing fallback")
+		topLanguages = []map[string]interface{}{
+			{"Name": "No language data", "Score": 0},
+		}
+	}
+
+	return map[string]interface{}{
+		"TopRepos":     topRepos,
+		"TopLanguages": topLanguages,
+	}, nil
+}
+
+// GetPersonTopCommitsAndPRs returns top commits and PRs for a person
+func (s *PeopleStatisticsService) GetPersonTopCommitsAndPRs(projectID, githubPersonID string) (map[string]interface{}, error) {
+	// Get all commits for this person in this project
+	commits, err := s.commitRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person commits: %w", err)
+	}
+
+	// Get top 3 commits by LoC (additions + deletions)
+	var topCommits []map[string]interface{}
+	for _, commit := range commits {
+		loc := commit.Additions + commit.Deletions
+		topCommits = append(topCommits, map[string]interface{}{
+			"ID":        commit.ID,
+			"SHA":       commit.CommitSHA[:8],
+			"Message":   commit.Message,
+			"LoC":       loc,
+			"Additions": commit.Additions,
+			"Deletions": commit.Deletions,
+			"Date":      commit.CommitDate.Format("2006-01-02"),
+		})
+	}
+
+	// Sort by LoC and take top 3
+	sort.Slice(topCommits, func(i, j int) bool {
+		return topCommits[i]["LoC"].(int) > topCommits[j]["LoC"].(int)
+	})
+	if len(topCommits) > 3 {
+		topCommits = topCommits[:3]
+	}
+
+	// Get all PRs for this person in this project
+	prs, err := s.pullRequestRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	log.Printf("Found %d PRs for person %s in project %s", len(prs), githubPersonID, projectID)
+	if err != nil {
+		log.Printf("Error getting PRs for person %s in project %s: %v", githubPersonID, projectID, err)
+		// If no PRs found, return empty list
+		return map[string]interface{}{
+			"TopCommits": topCommits,
+			"TopPRs":     []map[string]interface{}{},
+		}, nil
+	}
+
+	// Get the GitHub person to get their username
+	githubPerson, err := s.githubPersonRepo.GetByID(githubPersonID)
+	if err != nil {
+		log.Printf("Error getting GitHub person %s: %v", githubPersonID, err)
+		return map[string]interface{}{
+			"TopCommits": topCommits,
+			"TopPRs":     []map[string]interface{}{},
+		}, nil
+	}
+
+	// Filter PRs by username
+	var filteredPRs []*models.PullRequest
+	for _, pr := range prs {
+		if pr.User != nil {
+			var userData map[string]interface{}
+			if err := json.Unmarshal([]byte(*pr.User), &userData); err == nil {
+				if login, ok := userData["login"].(string); ok {
+					if login == githubPerson.Username {
+						filteredPRs = append(filteredPRs, pr)
+						log.Printf("Found PR %s by user %s", pr.ID, login)
+					}
+				}
+			}
+		}
+	}
+	log.Printf("Filtered to %d PRs for username %s", len(filteredPRs), githubPerson.Username)
+
+	// Get top 3 PRs by comment count
+	var topPRs []map[string]interface{}
+	for _, pr := range filteredPRs {
+		log.Printf("Processing PR %s (Number: %d, Title: %s)", pr.ID, pr.GithubPRNumber, pr.Title)
+		// Get comment count for this PR
+		commentCount, err := s.prReviewRepo.GetCommentCountByPRID(pr.ID)
+		if err != nil {
+			log.Printf("Error getting comment count for PR %s: %v", pr.ID, err)
+			commentCount = 0
+		} else {
+			log.Printf("PR %s has %d comments", pr.ID, commentCount)
+		}
+
+		topPRs = append(topPRs, map[string]interface{}{
+			"ID":        pr.ID,
+			"Number":    pr.GithubPRNumber,
+			"Title":     pr.Title,
+			"Comments":  commentCount,
+			"State":     pr.State,
+			"CreatedAt": pr.CreatedAt.Format("2006-01-02"),
+		})
+	}
+
+	// Sort by comment count and take top 3
+	sort.Slice(topPRs, func(i, j int) bool {
+		return topPRs[i]["Comments"].(int) > topPRs[j]["Comments"].(int)
+	})
+	if len(topPRs) > 3 {
+		topPRs = topPRs[:3]
+	}
+
+	return map[string]interface{}{
+		"TopCommits": topCommits,
+		"TopPRs":     topPRs,
+	}, nil
+}
+
+// getLanguageFromFile maps file extensions to programming languages
+func getLanguageFromFile(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	languageMap := map[string]string{
+		".go":           "Go",
+		".js":           "JavaScript",
+		".ts":           "TypeScript",
+		".py":           "Python",
+		".java":         "Java",
+		".cpp":          "C++",
+		".c":            "C",
+		".cs":           "C#",
+		".php":          "PHP",
+		".rb":           "Ruby",
+		".rs":           "Rust",
+		".swift":        "Swift",
+		".kt":           "Kotlin",
+		".scala":        "Scala",
+		".html":         "HTML",
+		".css":          "CSS",
+		".scss":         "SCSS",
+		".sass":         "Sass",
+		".vue":          "Vue",
+		".jsx":          "React",
+		".tsx":          "React",
+		".sh":           "Shell",
+		".bash":         "Shell",
+		".zsh":          "Shell",
+		".sql":          "SQL",
+		".json":         "JSON",
+		".xml":          "XML",
+		".yaml":         "YAML",
+		".yml":          "YAML",
+		".toml":         "TOML",
+		".ini":          "INI",
+		".md":           "Markdown",
+		".txt":          "Text",
+		".dockerfile":   "Docker",
+		".dockerignore": "Docker",
+	}
+
+	if lang, exists := languageMap[ext]; exists {
+		return lang
+	}
+	return ""
+}
+
+// GetPersonDetailedStats returns detailed statistics for a person
+func (s *PeopleStatisticsService) GetPersonDetailedStats(projectID, githubPersonID string) (map[string]interface{}, error) {
+	// Get all statistics for this person in this project
+	stats, err := s.peopleStatsRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person statistics: %w", err)
+	}
+
+	if len(stats) == 0 {
+		return map[string]interface{}{
+			"PeakMonth":         "N/A",
+			"ConsistencyScore":  0,
+			"TotalCommits":      0,
+			"TotalAdditions":    0,
+			"TotalDeletions":    0,
+			"TotalPullRequests": 0,
+			"FirstActivity":     "N/A",
+			"LastActivity":      "N/A",
+			"ActiveDuration":    "N/A",
+			"EfficiencyScore":   "N/A",
+			"ProductivityScore": "N/A",
+			"EngagementScore":   "N/A",
+		}, nil
+	}
+
+	// Sort by date
+	sort.Slice(stats, func(i, j int) bool {
+		return stats[i].StatDate.Before(stats[j].StatDate)
+	})
+
+	// Calculate totals
+	var totalCommits, totalAdditions, totalDeletions, totalPullRequests, totalComments int
+	monthlyScores := make(map[string]int)
+	activeMonths := make(map[string]bool)
+
+	for _, stat := range stats {
+		totalCommits += stat.Commits
+		totalAdditions += stat.Additions
+		totalDeletions += stat.Deletions
+		totalPullRequests += stat.PullRequests
+		totalComments += stat.Comments
+
+		// Track monthly scores for peak performance
+		monthKey := stat.StatDate.Format("2006-01")
+		monthlyScores[monthKey] += stat.Score
+		activeMonths[monthKey] = true
+	}
+
+	// Find peak month
+	var peakMonth string
+	var maxScore int
+	for month, score := range monthlyScores {
+		if score > maxScore {
+			maxScore = score
+			peakMonth = month
+		}
+	}
+
+	// Calculate consistency (percentage of months with activity)
+	firstDate := stats[0].StatDate
+	lastDate := stats[len(stats)-1].StatDate
+	totalMonths := int(lastDate.Sub(firstDate).Hours()/24/30) + 1
+	consistencyScore := 0
+	if totalMonths > 0 {
+		consistencyScore = (len(activeMonths) * 100) / totalMonths
+	}
+
+	// Calculate efficiency metrics
+	commitSizeScore := "N/A"
+	if totalCommits > 0 {
+		commitSizeScore = fmt.Sprintf("%.1f", float64(totalAdditions+totalDeletions)/float64(totalCommits))
+	}
+
+	refactorRatioScore := "N/A"
+	if totalAdditions > 0 {
+		originalRatio := float64(totalAdditions) / float64(totalAdditions+totalDeletions) * 100
+		refactorRatioScore = fmt.Sprintf("%.1f", 100-originalRatio)
+	}
+
+	engagementScore := "N/A"
+	if len(activeMonths) > 0 {
+		engagementScore = fmt.Sprintf("%.1f", float64(totalPullRequests+totalComments)/float64(len(activeMonths)))
+	}
+
+	// Format dates
+	firstActivity := firstDate.Format("2006-01-02")
+	lastActivity := lastDate.Format("2006-01-02")
+
+	// Calculate duration
+	duration := lastDate.Sub(firstDate)
+	activeDuration := fmt.Sprintf("%.0f days", duration.Hours()/24)
+
+	return map[string]interface{}{
+		"PeakMonth":          peakMonth,
+		"ConsistencyScore":   consistencyScore,
+		"TotalCommits":       totalCommits,
+		"TotalAdditions":     totalAdditions,
+		"TotalDeletions":     totalDeletions,
+		"TotalPullRequests":  totalPullRequests,
+		"TotalComments":      totalComments,
+		"FirstActivity":      firstActivity,
+		"LastActivity":       lastActivity,
+		"ActiveDuration":     activeDuration,
+		"CommitSizeScore":    commitSizeScore,
+		"RefactorRatioScore": refactorRatioScore,
+		"EngagementScore":    engagementScore,
+	}, nil
 }

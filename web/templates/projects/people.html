@@ -4,7 +4,7 @@
 <div class="card">
     <div class="flex justify-between items-center">
         <div class="card-header">People - {{.Project.Name}}</div>
-        <a href="/projects/{{.Project.ID}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
+        <a href="/projects/{{.Project.ID.String}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
     </div>
     <div class="text-xs text-gray-400 mt-2">
         All GitHub people found in this project. Associate emails to connect commits with pull requests.
@@ -25,7 +25,7 @@
                                 {{if .AvatarURL}}
                                     <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-8 h-8 rounded-full">
                                 {{end}}
-                                <span class="text-sm font-mono font-semibold text-white">{{.Username}}</span>
+                                <a href="/projects/{{$.Project.ID.String}}/people/{{.ID}}" class="text-sm font-mono font-semibold text-green-400 hover:text-green-300">{{.Username}}</a>
                                 {{if .DisplayName}}
                                     <span class="text-xs text-gray-300">({{.DisplayName}})</span>
                                 {{end}}
@@ -51,7 +51,7 @@
                                     <div class="text-green-400 font-semibold mb-2 text-sm">Associated Email:</div>
                                     <div class="flex items-center justify-between">
                                         <span class="font-mono text-xs text-green-300">{{$associatedEmail}}</span>
-                                        <button onclick="detachEmail('{{$.Project.ID}}', '{{$associatedEmail}}')" 
+                                        <button onclick="detachEmail('{{$.Project.ID.String}}', '{{$associatedEmail}}')" 
                                                 class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200">
                                             Detach
                                         </button>
@@ -74,7 +74,7 @@
                                     <option value="{{.}}">{{.}}</option>
                                 {{end}}
                             </select>
-                            <button onclick="associateEmail('{{$.Project.ID}}', '{{.ID}}')" 
+                            <button onclick="associateEmail('{{$.Project.ID.String}}', '{{.ID}}')" 
                                     class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" 
                                     disabled id="associate-btn-{{.ID}}">
                                 Associate

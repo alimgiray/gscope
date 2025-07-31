@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,6 +35,7 @@ type ProjectHandler struct {
 	textSimilarityService        *services.TextSimilarityService
 	peopleStatsService           *services.PeopleStatisticsService
 	projectUpdateSettingsService *services.ProjectUpdateSettingsService
+	projectCollaboratorService   *services.ProjectCollaboratorService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
@@ -42,7 +44,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 	jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, githubPersonRepo *repositories.GithubPersonRepository,
 	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
 	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService,
-	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService) *ProjectHandler {
+	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:               projectService,
 		userService:                  userService,
@@ -60,6 +62,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		textSimilarityService:        textSimilarityService,
 		peopleStatsService:           peopleStatsService,
 		projectUpdateSettingsService: projectUpdateSettingsService,
+		projectCollaboratorService:   projectCollaboratorService,
 	}
 }
 
@@ -216,9 +219,9 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -402,13 +405,13 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user is the owner (only owners can access settings)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType != "owner" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
-			"Error": "You don't have permission to access this project's settings.",
+			"Error": "Only project owners can access project settings.",
 		})
 		return
 	}
@@ -1405,9 +1408,9 @@ func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -1508,9 +1511,9 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -1631,9 +1634,9 @@ func (h *ProjectHandler) ViewProjectReports(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -2696,4 +2699,289 @@ func (h *ProjectHandler) RetryFailedJob(c *gin.Context) {
 		"message": fmt.Sprintf("Retry job created for %s job", job.JobType),
 		"job_id":  newJob.ID,
 	})
+}
+
+// ViewProjectCollaborators displays the collaborators page for a project
+func (h *ProjectHandler) ViewProjectCollaborators(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Invalid Request",
+			"User":  session,
+			"Error": "Project ID is required",
+		})
+		return
+	}
+
+	// Get project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "Project not found",
+		})
+		return
+	}
+
+	// Check if user is owner or collaborator
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have access to this project",
+		})
+		return
+	}
+
+	// Get collaborators
+	collaborators, err := h.projectCollaboratorService.GetProjectCollaborators(projectID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to load collaborators: " + err.Error(),
+		})
+		return
+	}
+
+	data := gin.H{
+		"Title":         "Project Collaborators",
+		"User":          session,
+		"Project":       project,
+		"Collaborators": collaborators,
+		"AccessType":    accessType,
+	}
+
+	c.HTML(http.StatusOK, "project_collaborators", data)
+}
+
+// AddProjectCollaborator adds a new collaborator to a project
+func (h *ProjectHandler) AddProjectCollaborator(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Project ID is required"})
+		return
+	}
+
+	// Check if user is owner
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType != "owner" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Only project owners can add collaborators"})
+		return
+	}
+
+	username := strings.TrimSpace(c.PostForm("username"))
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Username is required"})
+		return
+	}
+
+	// Add collaborator
+	err = h.projectCollaboratorService.AddCollaborator(projectID, username)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Successfully added %s as collaborator", username),
+	})
+}
+
+// RemoveProjectCollaborator removes a collaborator from a project
+func (h *ProjectHandler) RemoveProjectCollaborator(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
+		return
+	}
+
+	projectID := c.Param("id")
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Project ID is required"})
+		return
+	}
+
+	// Check if user is owner
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType != "owner" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Only project owners can remove collaborators"})
+		return
+	}
+
+	username := strings.TrimSpace(c.PostForm("username"))
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Username is required"})
+		return
+	}
+
+	// Remove collaborator
+	err = h.projectCollaboratorService.RemoveCollaborator(projectID, username)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Successfully removed %s as collaborator", username),
+	})
+}
+
+// ViewPersonStats displays individual person statistics for a project
+func (h *ProjectHandler) ViewPersonStats(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	projectID := c.Param("id")
+	personID := c.Param("person_id")
+
+	if projectID == "" || personID == "" {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "Invalid Request",
+			"User":  session,
+			"Error": "Project ID and Person ID are required",
+		})
+		return
+	}
+
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.HTML(http.StatusForbidden, "error", gin.H{
+			"Title": "Access Denied",
+			"User":  session,
+			"Error": "You don't have permission to view this project.",
+		})
+		return
+	}
+
+	// Get project
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Project Not Found",
+			"User":  session,
+			"Error": "Project not found",
+		})
+		return
+	}
+
+	// Get GitHub person
+	githubPerson, err := h.githubPersonRepo.GetByID(personID)
+	if err != nil {
+		c.HTML(http.StatusNotFound, "error", gin.H{
+			"Title": "Person Not Found",
+			"User":  session,
+			"Error": "Person not found",
+		})
+		return
+	}
+
+	// Get weekly averages for this person
+	weeklyAverages, err := h.peopleStatsService.GetPersonWeeklyAverages(projectID, personID)
+	if err != nil {
+		// Log error but continue with zero averages
+		log.Printf("Error getting weekly averages for person %s: %v", personID, err)
+		weeklyAverages = map[string]float64{
+			"commits":       0,
+			"additions":     0,
+			"deletions":     0,
+			"comments":      0,
+			"pull_requests": 0,
+		}
+	}
+
+	// Get score history for this person
+	scoreHistory, err := h.peopleStatsService.GetPersonScoreHistory(projectID, personID)
+	if err != nil {
+		// Log error but continue with empty history
+		log.Printf("Error getting score history for person %s: %v", personID, err)
+		scoreHistory = []map[string]interface{}{}
+	}
+
+	// Get detailed statistics for this person
+	detailedStats, err := h.peopleStatsService.GetPersonDetailedStats(projectID, personID)
+	if err != nil {
+		// Log error but continue with empty stats
+		log.Printf("Error getting detailed stats for person %s: %v", personID, err)
+		detailedStats = map[string]interface{}{
+			"PeakMonth":         "N/A",
+			"ConsistencyScore":  0,
+			"TotalCommits":      0,
+			"TotalAdditions":    0,
+			"TotalDeletions":    0,
+			"TotalPullRequests": 0,
+			"TotalComments":     0,
+			"FirstActivity":     "N/A",
+			"LastActivity":      "N/A",
+			"ActiveDuration":    "N/A",
+			"CommitSizeScore":   "N/A",
+			"CodeQualityScore":  "N/A",
+			"EngagementScore":   "N/A",
+		}
+	}
+
+	// Get top repositories and languages for this person
+	topReposAndLanguages, err := h.peopleStatsService.GetPersonTopReposAndLanguages(projectID, personID)
+	if err != nil {
+		// Log error but continue with empty data
+		log.Printf("Error getting top repos and languages for person %s: %v", personID, err)
+		topReposAndLanguages = map[string]interface{}{
+			"TopRepos":     []map[string]interface{}{},
+			"TopLanguages": []map[string]interface{}{},
+		}
+	}
+
+	// Get top commits and PRs for this person
+	topCommitsAndPRs, err := h.peopleStatsService.GetPersonTopCommitsAndPRs(projectID, personID)
+	if err != nil {
+		// Log error but continue with empty data
+		log.Printf("Error getting top commits and PRs for person %s: %v", personID, err)
+		topCommitsAndPRs = map[string]interface{}{
+			"TopCommits": []map[string]interface{}{},
+			"TopPRs":     []map[string]interface{}{},
+		}
+	}
+
+	// Convert score history to JSON for the template
+	scoreHistoryJSON, err := json.Marshal(scoreHistory)
+	if err != nil {
+		log.Printf("Error marshaling score history to JSON: %v", err)
+		scoreHistoryJSON = []byte("[]")
+	}
+
+	data := gin.H{
+		"Title":                "Person Statistics",
+		"User":                 session,
+		"Project":              project,
+		"Person":               githubPerson,
+		"AccessType":           accessType,
+		"WeeklyAverages":       weeklyAverages,
+		"ScoreHistory":         scoreHistory,
+		"ScoreHistoryJSON":     string(scoreHistoryJSON),
+		"DetailedStats":        detailedStats,
+		"TopReposAndLanguages": topReposAndLanguages,
+		"TopCommitsAndPRs":     topCommitsAndPRs,
+	}
+
+	c.HTML(http.StatusOK, "person_stats", data)
 }
