@@ -25,7 +25,7 @@ import (
 func main() {
 	// Initialize logger
 	logger.Init()
-	
+
 	// Load configuration
 	if err := config.Load(); err != nil {
 		logger.WithError(err).Fatal("Failed to load config")

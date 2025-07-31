@@ -69,11 +69,11 @@ func Load() error {
 	// Log configuration (without sensitive data)
 	logger.Info("Configuration loaded")
 	logger.WithFields(logrus.Fields{
-		"server_port":     AppConfig.Server.Port,
-		"gin_mode":        AppConfig.Server.Mode,
-		"database_path":   AppConfig.Database.Path,
+		"server_port":      AppConfig.Server.Port,
+		"gin_mode":         AppConfig.Server.Mode,
+		"database_path":    AppConfig.Database.Path,
 		"github_client_id": maskString(AppConfig.GitHub.ClientID),
-		"github_callback": AppConfig.GitHub.CallbackURL,
+		"github_callback":  AppConfig.GitHub.CallbackURL,
 	}).Info("Application configuration")
 
 	return nil

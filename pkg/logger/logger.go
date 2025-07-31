@@ -11,10 +11,10 @@ var log *logrus.Logger
 // Init initializes the logger with proper configuration
 func Init() {
 	log = logrus.New()
-	
+
 	// Set output to stdout
 	log.SetOutput(os.Stdout)
-	
+
 	// Set log level based on environment
 	logLevel := os.Getenv("LOG_LEVEL")
 	switch logLevel {
@@ -29,7 +29,7 @@ func Init() {
 	default:
 		log.SetLevel(logrus.InfoLevel)
 	}
-	
+
 	// Set formatter for structured logging
 	log.SetFormatter(&logrus.JSONFormatter{
 		TimestampFormat: "2006-01-02 15:04:05",
@@ -107,4 +107,4 @@ func Fatal(args ...interface{}) {
 // Fatalf logs a formatted fatal message and exits
 func Fatalf(format string, args ...interface{}) {
 	GetLogger().Fatalf(format, args...)
-} 
+}

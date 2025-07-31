@@ -144,61 +144,6 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/dashboard")
 }
 
-// GetProjectsByOwner retrieves all projects for the current owner
-func (h *ProjectHandler) GetProjectsByOwner(c *gin.Context) {
-	session := middleware.GetSession(c)
-	if session == nil {
-		c.Redirect(http.StatusFound, "/login")
-		return
-	}
-
-	projects, err := h.projectService.GetProjectsByOwnerID(session.UserID)
-	if err != nil {
-		c.HTML(http.StatusInternalServerError, "error", gin.H{
-			"Title": "Error",
-			"User":  session,
-			"Error": "Failed to load projects",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"projects": projects,
-	})
-}
-
-// GetProjectByID retrieves a specific project
-func (h *ProjectHandler) GetProjectByID(c *gin.Context) {
-	session := middleware.GetSession(c)
-	if session == nil {
-		c.Redirect(http.StatusFound, "/login")
-		return
-	}
-
-	projectID := c.Param("id")
-	if projectID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID is required"})
-		return
-	}
-
-	project, err := h.projectService.GetProjectByID(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-		return
-	}
-
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"project": project,
-	})
-}
-
 // ViewProject displays a single project page
 func (h *ProjectHandler) ViewProject(c *gin.Context) {
 	session := middleware.GetSession(c)

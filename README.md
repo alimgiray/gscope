@@ -68,11 +68,75 @@ GScope is a comprehensive analytics platform designed specifically for engineeri
 
 4. **Run GScope**
    ```bash
+   # Using Makefile (recommended)
+   make run
+   
+   # Or directly with go
    go run cmd/server/main.go
    ```
 
 5. **Access Dashboard**
    Open `http://localhost:8080` and authenticate with GitHub
+
+## Development with Makefile
+
+GScope includes a comprehensive Makefile for streamlined development workflows:
+
+### Quick Commands
+```bash
+make help          # Show all available commands
+make test          # Run all tests
+make build         # Build the application
+make run           # Run the application
+make clean         # Clean build artifacts
+```
+
+### Testing
+```bash
+make test                    # Run all tests
+make test-services          # Run service layer tests
+make test-middleware        # Run middleware tests
+make test-coverage          # Run tests with coverage report
+make test-race              # Run tests with race detection
+make test-benchmark         # Run benchmark tests
+```
+
+### Development Workflow
+```bash
+make dev                    # Complete dev workflow (format, tidy, test, run)
+make quick                  # Quick cycle (format, test, run)
+make fmt                    # Format code
+make lint                   # Run linter (requires golangci-lint)
+make vet                    # Run go vet
+```
+
+### Database Management
+```bash
+make db-migrate             # Run database migrations
+make db-reset               # Reset database (delete and recreate)
+```
+
+### Building & Deployment
+```bash
+make build                  # Build for current platform
+make build-all              # Build for all platforms (Linux, macOS, Windows)
+make release                # Create release builds
+```
+
+### CI/CD Pipeline
+```bash
+make ci                     # Run CI pipeline (format, vet, lint, test)
+make ci-full                # Full CI with security scan
+make pre-commit             # Pre-commit checks
+```
+
+### Utilities
+```bash
+make version                # Show version information
+make setup                  # Setup development environment
+make deps                   # Install dependencies
+make clean-all              # Clean everything including database
+```
 
 ## Configuration
 

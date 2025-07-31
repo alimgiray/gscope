@@ -28,7 +28,14 @@ func SessionMiddleware() gin.HandlerFunc {
 		// Set session data in context
 		c.Set("session", sessionData)
 
+		// Process the request
 		c.Next()
+
+		// After request is processed, extend session if it was valid and successful
+		if sessionData != nil && c.Writer.Status() < 400 {
+			// Extend session expiry time
+			extendSession(c, sessionData)
+		}
 	}
 }
 
@@ -69,6 +76,26 @@ func getSessionFromCookie(c *gin.Context) *SessionData {
 	}
 
 	return &sessionData
+}
+
+// extendSession extends the session expiry time and updates the cookie
+func extendSession(c *gin.Context, sessionData *SessionData) {
+	// Extend expiry time by 24 hours from now
+	sessionData.ExpiresAt = time.Now().Add(24 * time.Hour)
+
+	// Encode updated session data
+	data, err := json.Marshal(sessionData)
+	if err != nil {
+		return
+	}
+
+	encodedData := base64.URLEncoding.EncodeToString(data)
+
+	// Create new signature
+	signature := createSignature(encodedData)
+
+	// Update cookie with extended expiry
+	c.SetCookie("session", signature+"."+encodedData, 86400, "/", "", false, true)
 }
 
 // SetSession creates a new session cookie
