@@ -18,18 +18,21 @@
 <div class="card mt-4">
     <div class="card-header">Select Day</div>
     <div class="card-body">
-        <form method="GET" class="flex gap-4 items-center">
-            <select name="day" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
+        <form method="GET" id="dayForm" class="flex gap-4 items-center">
+            <select name="day" id="daySelect" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
                 {{range .Days}}
                     <option value="{{.}}" {{if eq . $.SelectedDay}}selected{{end}}>{{.}}</option>
                 {{end}}
             </select>
-            <button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
-                View Statistics
-            </button>
         </form>
     </div>
 </div>
+
+<script>
+document.getElementById('daySelect').addEventListener('change', function() {
+    document.getElementById('dayForm').submit();
+});
+</script>
 
 <!-- Daily Reports Content -->
 <div class="card mt-4">

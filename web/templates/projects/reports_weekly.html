@@ -18,18 +18,21 @@
 <div class="card mt-4">
     <div class="card-header">Select Week</div>
     <div class="card-body">
-        <form method="GET" class="flex gap-4 items-center">
-            <select name="week" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
+        <form method="GET" id="weekForm" class="flex gap-4 items-center">
+            <select name="week" id="weekSelect" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
                 {{range .Weeks}}
                     <option value="{{.}}" {{if eq . $.SelectedWeek}}selected{{end}}>{{.}}</option>
                 {{end}}
             </select>
-            <button type="submit" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
-                View Statistics
-            </button>
         </form>
     </div>
 </div>
+
+<script>
+document.getElementById('weekSelect').addEventListener('change', function() {
+    document.getElementById('weekForm').submit();
+});
+</script>
 
 <!-- Weekly Reports Content -->
 <div class="card mt-4">

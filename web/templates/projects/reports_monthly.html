@@ -18,18 +18,21 @@
 <div class="card mt-4">
     <div class="card-header">Select Month</div>
     <div class="card-body">
-        <form method="GET" class="flex gap-4 items-center">
-            <select name="month" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
+        <form method="GET" id="monthForm" class="flex gap-4 items-center">
+            <select name="month" id="monthSelect" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
                 {{range .Months}}
                     <option value="{{.}}" {{if eq . $.SelectedMonth}}selected{{end}}>{{.}}</option>
                 {{end}}
             </select>
-            <button type="submit" class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium">
-                View Statistics
-            </button>
         </form>
     </div>
 </div>
+
+<script>
+document.getElementById('monthSelect').addEventListener('change', function() {
+    document.getElementById('monthForm').submit();
+});
+</script>
 
 <!-- Monthly Reports Content -->
 <div class="card mt-4">
