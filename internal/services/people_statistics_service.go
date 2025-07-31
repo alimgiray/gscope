@@ -1677,3 +1677,91 @@ func (s *PeopleStatisticsService) GetPersonDetailedStats(projectID, githubPerson
 		"EngagementScore":    engagementScore,
 	}, nil
 }
+
+// GetPersonOvertimeStats calculates overtime statistics for a person
+func (s *PeopleStatisticsService) GetPersonOvertimeStats(projectID, githubPersonID string) (map[string]interface{}, error) {
+	// Get the person's commits for the project
+	commits, err := s.commitRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person commits: %v", err)
+	}
+
+	// Get PR reviews for this person
+	prReviews, err := s.prReviewRepo.GetByProjectAndPerson(projectID, githubPersonID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching person PR reviews: %v", err)
+	}
+
+	// Initialize counters
+	overtimeCommits := 0
+	totalCommits := 0
+	overtimeComments := 0
+	totalComments := 0
+
+	// Process commits
+	for _, commit := range commits {
+		totalCommits++
+		commitTime := commit.CommitDate
+
+		// Check if commit is outside working hours (9:00-18:00, Monday-Friday)
+		if isOvertime(commitTime) {
+			overtimeCommits++
+		}
+	}
+
+	// Process PR reviews (comments)
+	for _, review := range prReviews {
+		totalComments++
+		reviewTime := review.SubmittedAt
+
+		// Check if review is outside working hours
+		if reviewTime != nil && isOvertime(*reviewTime) {
+			overtimeComments++
+		}
+	}
+
+	// Calculate percentages
+	overtimeCommitPercentage := 0.0
+	if totalCommits > 0 {
+		overtimeCommitPercentage = float64(overtimeCommits) / float64(totalCommits) * 100
+	}
+
+	overtimeCommentPercentage := 0.0
+	if totalComments > 0 {
+		overtimeCommentPercentage = float64(overtimeComments) / float64(totalComments) * 100
+	}
+
+	return map[string]interface{}{
+		"OvertimeCommits":           overtimeCommits,
+		"TotalCommits":              totalCommits,
+		"OvertimeCommitPercentage":  overtimeCommitPercentage,
+		"OvertimeComments":          overtimeComments,
+		"TotalComments":             totalComments,
+		"OvertimeCommentPercentage": overtimeCommentPercentage,
+	}, nil
+}
+
+// isOvertime checks if a given time is outside working hours (9:00-18:00, Monday-Friday)
+// Handles both timezone-aware times (commits) and UTC times (PR reviews)
+func isOvertime(t time.Time) bool {
+	// For commit_date: time already has timezone info, use as-is
+	// For github_created_at: time is UTC, convert to local
+	var localTime time.Time
+	if t.Location() == time.UTC {
+		// UTC time (from PR reviews) - convert to local
+		localTime = t.Local()
+	} else {
+		// Timezone-aware time (from commits) - use as-is
+		localTime = t
+	}
+
+	// Check if it's a weekday (Monday = 1, Sunday = 0)
+	weekday := localTime.Weekday()
+	if weekday == time.Saturday || weekday == time.Sunday {
+		return true
+	}
+
+	// Check if it's outside working hours (9:00-18:00)
+	hour := localTime.Hour()
+	return hour < 9 || hour >= 18
+}

@@ -2962,6 +2962,21 @@ func (h *ProjectHandler) ViewPersonStats(c *gin.Context) {
 		}
 	}
 
+	// Get overtime statistics for this person
+	overtimeStats, err := h.peopleStatsService.GetPersonOvertimeStats(projectID, personID)
+	if err != nil {
+		// Log error but continue with empty data
+		log.Printf("Error getting overtime stats for person %s: %v", personID, err)
+		overtimeStats = map[string]interface{}{
+			"OvertimeCommits":           0,
+			"TotalCommits":              0,
+			"OvertimeCommitPercentage":  0.0,
+			"OvertimeComments":          0,
+			"TotalComments":             0,
+			"OvertimeCommentPercentage": 0.0,
+		}
+	}
+
 	// Convert score history to JSON for the template
 	scoreHistoryJSON, err := json.Marshal(scoreHistory)
 	if err != nil {
@@ -2981,6 +2996,7 @@ func (h *ProjectHandler) ViewPersonStats(c *gin.Context) {
 		"DetailedStats":        detailedStats,
 		"TopReposAndLanguages": topReposAndLanguages,
 		"TopCommitsAndPRs":     topCommitsAndPRs,
+		"OvertimeStats":        overtimeStats,
 	}
 
 	c.HTML(http.StatusOK, "person_stats", data)

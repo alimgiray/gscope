@@ -274,7 +274,29 @@
             <div class="bg-gray-700 rounded-lg p-4">
                 <h4 class="text-sm font-semibold text-yellow-400 mb-2">Engagement</h4>
                 <div class="text-lg font-bold text-white mb-1">{{.DetailedStats.EngagementScore}}</div>
-                <div class="text-xs text-gray-400">PRs + Comments per month</div>
+                <div class="text-xs text-gray-400">PRs + Comments per month                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overtime Statistics Section -->
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-green-400 mb-4">Overtime Statistics</h3>
+        <p class="text-sm text-gray-400 mb-4">Activity outside normal working hours (9:00-18:00, Monday-Friday)</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Commits Overtime -->
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-blue-400 mb-2">Commits</h4>
+                <div class="text-lg font-bold text-white mb-1">{{.OvertimeStats.OvertimeCommits}} / {{.OvertimeStats.TotalCommits}}</div>
+                <div class="text-xs text-gray-400">{{printf "%.1f" .OvertimeStats.OvertimeCommitPercentage}}% overtime</div>
+            </div>
+            
+            <!-- Comments Overtime -->
+            <div class="bg-gray-700 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-yellow-400 mb-2">PR Comments</h4>
+                <div class="text-lg font-bold text-white mb-1">{{.OvertimeStats.OvertimeComments}} / {{.OvertimeStats.TotalComments}}</div>
+                <div class="text-xs text-gray-400">{{printf "%.1f" .OvertimeStats.OvertimeCommentPercentage}}% overtime</div>
             </div>
         </div>
     </div>

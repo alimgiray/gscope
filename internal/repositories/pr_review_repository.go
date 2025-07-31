@@ -233,3 +233,44 @@ func (r *PRReviewRepository) GetCommentCountByPRID(prID string) (int, error) {
 
 	return count, nil
 }
+
+// GetByProjectAndPerson retrieves PR reviews for a specific person in a project
+func (r *PRReviewRepository) GetByProjectAndPerson(projectID, githubPersonID string) ([]*models.PRReview, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	query := `
+		SELECT pr.*
+		FROM pr_reviews pr
+		INNER JOIN pull_requests p ON pr.pull_request_id = p.id
+		INNER JOIN github_repositories gr ON p.repository_id = gr.id
+		INNER JOIN project_repositories prj ON gr.id = prj.github_repo_id
+		INNER JOIN github_people_emails gpe ON gpe.project_id = prj.project_id
+		INNER JOIN github_people gp ON gpe.github_person_id = gp.id
+		WHERE prj.project_id = ? AND gpe.github_person_id = ? AND pr.reviewer_login = gp.username
+		ORDER BY pr.submitted_at DESC
+	`
+
+	rows, err := r.db.Query(query, projectID, githubPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reviews []*models.PRReview
+	for rows.Next() {
+		var review models.PRReview
+		err := rows.Scan(
+			&review.ID, &review.RepositoryID, &review.PullRequestID, &review.GithubReviewID, &review.ReviewerID,
+			&review.ReviewerLogin, &review.Body, &review.State, &review.AuthorAssociation, &review.SubmittedAt, &review.CommitID,
+			&review.HTMLURL, &review.GithubCreatedAt, &review.GithubUpdatedAt,
+			&review.CreatedAt, &review.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		reviews = append(reviews, &review)
+	}
+
+	return reviews, nil
+}
