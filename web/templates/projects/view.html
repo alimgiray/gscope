@@ -15,9 +15,7 @@
     <div class="text-xs text-gray-400 mt-2">
         Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}
     </div>
-    <div id="auto-refresh-indicator" class="mt-4 p-2 bg-blue-100 border border-blue-400 text-blue-700 rounded text-xs hidden">
-        🔄 Auto-refreshing every 5 seconds to show job progress...
-    </div>
+
     
     <!-- Toast Container -->
     <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
@@ -376,17 +374,9 @@ function hasActiveJobs() {
     return activeJobButtons.length > 0 || hasProcessingText;
 }
 
-function showAutoRefreshIndicator() {
-    const indicator = document.getElementById('auto-refresh-indicator');
-    if (indicator) {
-        indicator.classList.remove('hidden');
-    }
-}
-
 function startAutoRefresh() {
     if (hasActiveJobs()) {
         console.log('Active jobs detected, starting auto-refresh every 5 seconds');
-        showAutoRefreshIndicator();
         setTimeout(function() {
             updateJobStatuses();
         }, 5000);
@@ -430,12 +420,6 @@ function updateJobStatuses() {
         // Continue auto-refresh if there are still active jobs
         if (hasActiveJobs()) {
             setTimeout(updateJobStatuses, 5000);
-        } else {
-            // Hide auto-refresh indicator when no active jobs
-            const indicator = document.getElementById('auto-refresh-indicator');
-            if (indicator) {
-                indicator.classList.add('hidden');
-            }
         }
     })
     .catch(error => {
@@ -455,23 +439,14 @@ function updateJobSection(newContent) {
         const repoId = section.getAttribute('data-repository-id');
         const newSection = newContent.querySelector(`[data-repository-id="${repoId}"]`);
         if (newSection) {
-            // Update buttons
-            const buttons = section.querySelectorAll('button');
-            const newButtons = newSection.querySelectorAll('button');
+            // Find the button container and replace it completely
+            const buttonContainer = section.querySelector('.flex.flex-col.gap-2.ml-4');
+            const newButtonContainer = newSection.querySelector('.flex.flex-col.gap-2.ml-4');
             
-            console.log(`Repository ${repoId}: ${buttons.length} current buttons, ${newButtons.length} new buttons`);
-            
-            buttons.forEach((button, index) => {
-                if (newButtons[index]) {
-                    try {
-                        button.disabled = newButtons[index].disabled;
-                        button.textContent = newButtons[index].textContent;
-                        button.className = newButtons[index].className;
-                    } catch (error) {
-                        console.error('Error updating button:', error);
-                    }
-                }
-            });
+            if (buttonContainer && newButtonContainer) {
+                console.log(`Repository ${repoId}: Replacing button container`);
+                buttonContainer.innerHTML = newButtonContainer.innerHTML;
+            }
             
             // Update failed jobs section
             const failedJobsSection = section.querySelector('.bg-red-900.bg-opacity-10');
