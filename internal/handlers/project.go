@@ -40,6 +40,7 @@ type ProjectHandler struct {
 	peopleStatsService           *services.PeopleStatisticsService
 	projectUpdateSettingsService *services.ProjectUpdateSettingsService
 	projectCollaboratorService   *services.ProjectCollaboratorService
+	workingHoursSettingsService  *services.WorkingHoursSettingsService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
@@ -49,7 +50,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 	prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository,
 	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
 	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService,
-	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService) *ProjectHandler {
+	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:               projectService,
 		userService:                  userService,
@@ -71,6 +72,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		peopleStatsService:           peopleStatsService,
 		projectUpdateSettingsService: projectUpdateSettingsService,
 		projectCollaboratorService:   projectCollaboratorService,
+		workingHoursSettingsService:  workingHoursSettingsService,
 	}
 }
 
@@ -450,14 +452,33 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		updateSettings = nil
 	}
 
+	// Get working hours settings
+	workingHoursSettings, err := h.workingHoursSettingsService.GetByProjectID(projectID)
+	if err != nil {
+		// If no working hours settings found, create default ones
+		workingHoursSettings = &models.WorkingHoursSettings{
+			ProjectID: projectID,
+			StartHour: 9,
+			EndHour:   17,
+			Monday:    true,
+			Tuesday:   true,
+			Wednesday: true,
+			Thursday:  true,
+			Friday:    true,
+			Saturday:  false,
+			Sunday:    false,
+		}
+	}
+
 	data := gin.H{
-		"Title":              "Project Settings",
-		"User":               session,
-		"Project":            project,
-		"ScoreSettings":      scoreSettings,
-		"ExcludedExtensions": excludedExtensions,
-		"ExcludedFolders":    excludedFolders,
-		"UpdateSettings":     updateSettings,
+		"Title":                "Project Settings",
+		"User":                 session,
+		"Project":              project,
+		"ScoreSettings":        scoreSettings,
+		"ExcludedExtensions":   excludedExtensions,
+		"ExcludedFolders":      excludedFolders,
+		"UpdateSettings":       updateSettings,
+		"WorkingHoursSettings": workingHoursSettings,
 	}
 
 	c.HTML(http.StatusOK, "project_settings", data)

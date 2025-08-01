@@ -229,3 +229,129 @@ func TestWeeklyAveragesCalculation(t *testing.T) {
 		assert.Equal(t, float64(4), averages["pull_requests"]) // 12/3 = 4
 	})
 }
+
+func TestIsExcludedExtension(t *testing.T) {
+	// Create a mock service instance
+	service := &PeopleStatisticsService{}
+
+	// Test cases for extension checking
+	testCases := []struct {
+		filename       string
+		excludedExtMap map[string]bool
+		expectedResult bool
+		description    string
+	}{
+		{
+			filename:       "test.txt",
+			excludedExtMap: map[string]bool{"txt": true},
+			expectedResult: true,
+			description:    "Basic extension match",
+		},
+		{
+			filename:       "test.TXT",
+			excludedExtMap: map[string]bool{"txt": true},
+			expectedResult: true,
+			description:    "Case insensitive extension match",
+		},
+		{
+			filename:       "test.min.js",
+			excludedExtMap: map[string]bool{"min.js": true},
+			expectedResult: true,
+			description:    "Multi-part extension match",
+		},
+		{
+			filename:       "app.min.js",
+			excludedExtMap: map[string]bool{"min.js": true},
+			expectedResult: true,
+			description:    "Multi-part extension in filename",
+		},
+		{
+			filename:       "app.MIN.JS",
+			excludedExtMap: map[string]bool{"min.js": true},
+			expectedResult: true,
+			description:    "Case insensitive multi-part extension",
+		},
+		{
+			filename:       "test.js",
+			excludedExtMap: map[string]bool{"min.js": true},
+			expectedResult: false,
+			description:    "No match for different extension",
+		},
+		{
+			filename:       "test.txt",
+			excludedExtMap: map[string]bool{"js": true},
+			expectedResult: false,
+			description:    "No match for different extension",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			result := service.isExcludedExtension(tc.filename, tc.excludedExtMap)
+			if result != tc.expectedResult {
+				t.Errorf("Expected %v, got %v for filename '%s' with excluded extensions %v",
+					tc.expectedResult, result, tc.filename, tc.excludedExtMap)
+			}
+		})
+	}
+}
+
+func TestIsExcludedFolder(t *testing.T) {
+	// Create a mock service instance
+	service := &PeopleStatisticsService{}
+
+	// Mock excluded folders
+	excludedFolders := []*models.ExcludedFolder{
+		{FolderPath: "docs"},
+		{FolderPath: "node_modules"},
+		{FolderPath: "build"},
+	}
+
+	// Test cases for folder checking
+	testCases := []struct {
+		filePath       string
+		expectedResult bool
+		description    string
+	}{
+		{
+			filePath:       "docs/readme.md",
+			expectedResult: true,
+			description:    "File in excluded folder",
+		},
+		{
+			filePath:       "Docs/readme.md",
+			expectedResult: true,
+			description:    "Case insensitive folder match",
+		},
+		{
+			filePath:       "node_modules/package.json",
+			expectedResult: true,
+			description:    "File in another excluded folder",
+		},
+		{
+			filePath:       "src/main.js",
+			expectedResult: false,
+			description:    "File not in excluded folder",
+		},
+		{
+			filePath:       "docs",
+			expectedResult: true,
+			description:    "Exact folder path match",
+		},
+		{
+			filePath:       "docs/subfolder/file.txt",
+			expectedResult: true,
+			description:    "File in subfolder of excluded folder",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			result := service.isExcludedFolder(tc.filePath, excludedFolders)
+			if result != tc.expectedResult {
+				t.Errorf("Expected %v, got %v for file path '%s'",
+					tc.expectedResult, result, tc.filePath)
+			}
+		})
+	}
+}

@@ -16,20 +16,21 @@ import (
 )
 
 type PeopleStatisticsService struct {
-	peopleStatsRepo       *repositories.PeopleStatisticsRepository
-	commitRepo            *repositories.CommitRepository
-	commitFileRepo        *repositories.CommitFileRepository
-	pullRequestRepo       *repositories.PullRequestRepository
-	prReviewRepo          *repositories.PRReviewRepository
-	githubPersonRepo      *repositories.GithubPersonRepository
-	emailMergeRepo        *repositories.EmailMergeRepository
-	githubPersonEmailRepo *repositories.GitHubPersonEmailRepository
-	personRepo            *repositories.PersonRepository
-	scoreSettingsRepo     *repositories.ScoreSettingsRepository
-	excludedExtRepo       *repositories.ExcludedExtensionRepository
-	excludedFolderRepo    *repositories.ExcludedFolderRepository
-	githubRepoRepo        *repositories.GitHubRepositoryRepository
-	projectRepositoryRepo *repositories.ProjectRepositoryRepository
+	peopleStatsRepo             *repositories.PeopleStatisticsRepository
+	commitRepo                  *repositories.CommitRepository
+	commitFileRepo              *repositories.CommitFileRepository
+	pullRequestRepo             *repositories.PullRequestRepository
+	prReviewRepo                *repositories.PRReviewRepository
+	githubPersonRepo            *repositories.GithubPersonRepository
+	emailMergeRepo              *repositories.EmailMergeRepository
+	githubPersonEmailRepo       *repositories.GitHubPersonEmailRepository
+	personRepo                  *repositories.PersonRepository
+	scoreSettingsRepo           *repositories.ScoreSettingsRepository
+	excludedExtRepo             *repositories.ExcludedExtensionRepository
+	excludedFolderRepo          *repositories.ExcludedFolderRepository
+	githubRepoRepo              *repositories.GitHubRepositoryRepository
+	projectRepositoryRepo       *repositories.ProjectRepositoryRepository
+	workingHoursSettingsService *WorkingHoursSettingsService
 }
 
 func NewPeopleStatisticsService(
@@ -47,22 +48,24 @@ func NewPeopleStatisticsService(
 	excludedFolderRepo *repositories.ExcludedFolderRepository,
 	githubRepoRepo *repositories.GitHubRepositoryRepository,
 	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
+	workingHoursSettingsService *WorkingHoursSettingsService,
 ) *PeopleStatisticsService {
 	return &PeopleStatisticsService{
-		peopleStatsRepo:       peopleStatsRepo,
-		commitRepo:            commitRepo,
-		commitFileRepo:        commitFileRepo,
-		pullRequestRepo:       pullRequestRepo,
-		prReviewRepo:          prReviewRepo,
-		githubPersonRepo:      githubPersonRepo,
-		emailMergeRepo:        emailMergeRepo,
-		githubPersonEmailRepo: githubPersonEmailRepo,
-		personRepo:            personRepo,
-		scoreSettingsRepo:     scoreSettingsRepo,
-		excludedExtRepo:       excludedExtRepo,
-		excludedFolderRepo:    excludedFolderRepo,
-		githubRepoRepo:        githubRepoRepo,
-		projectRepositoryRepo: projectRepositoryRepo,
+		peopleStatsRepo:             peopleStatsRepo,
+		commitRepo:                  commitRepo,
+		commitFileRepo:              commitFileRepo,
+		pullRequestRepo:             pullRequestRepo,
+		prReviewRepo:                prReviewRepo,
+		githubPersonRepo:            githubPersonRepo,
+		emailMergeRepo:              emailMergeRepo,
+		githubPersonEmailRepo:       githubPersonEmailRepo,
+		personRepo:                  personRepo,
+		scoreSettingsRepo:           scoreSettingsRepo,
+		excludedExtRepo:             excludedExtRepo,
+		excludedFolderRepo:          excludedFolderRepo,
+		githubRepoRepo:              githubRepoRepo,
+		projectRepositoryRepo:       projectRepositoryRepo,
+		workingHoursSettingsService: workingHoursSettingsService,
 	}
 }
 
@@ -594,26 +597,35 @@ func (s *PeopleStatisticsService) calculateCommentStats(repositoryID, githubPers
 	return count
 }
 
-// isExcludedExtension checks if a file has an excluded extension
+// isExcludedExtension checks if a file has an excluded extension (case insensitive)
 func (s *PeopleStatisticsService) isExcludedExtension(filename string, excludedExtMap map[string]bool) bool {
-	// Extract file extension
-	for i := len(filename) - 1; i >= 0; i-- {
-		if filename[i] == '.' {
-			ext := filename[i+1:]
-			return excludedExtMap[ext]
+	// Convert filename to lowercase for case-insensitive comparison
+	filenameLower := strings.ToLower(filename)
+
+	// Check if any excluded extension is contained in the filename
+	for excludedExt := range excludedExtMap {
+		excludedExtLower := strings.ToLower(excludedExt)
+		// Check if the filename contains the excluded extension
+		if strings.Contains(filenameLower, "."+excludedExtLower) {
+			return true
 		}
 	}
 	return false
 }
 
-// isExcludedFolder checks if a file is in an excluded folder
+// isExcludedFolder checks if a file is in an excluded folder (case insensitive)
 func (s *PeopleStatisticsService) isExcludedFolder(filePath string, excludedFolders []*models.ExcludedFolder) bool {
+	// Convert file path to lowercase for case-insensitive comparison
+	filePathLower := strings.ToLower(filePath)
+
 	for _, folder := range excludedFolders {
 		folderPath := folder.FolderPath
+		folderPathLower := strings.ToLower(folderPath)
+
 		// Check if the file path starts with the excluded folder path
-		if len(filePath) >= len(folderPath) && filePath[:len(folderPath)] == folderPath {
+		if len(filePathLower) >= len(folderPathLower) && filePathLower[:len(folderPathLower)] == folderPathLower {
 			// If it's exactly the folder path or starts with folder path + "/"
-			if len(filePath) == len(folderPath) || filePath[len(folderPath)] == '/' {
+			if len(filePathLower) == len(folderPathLower) || filePathLower[len(folderPathLower)] == '/' {
 				return true
 			}
 		}
@@ -1645,13 +1657,33 @@ func (s *PeopleStatisticsService) GetPersonDetailedStats(projectID, githubPerson
 		}
 	}
 
-	// Calculate consistency (percentage of months with activity)
+	// Calculate consistency (percentage of weeks with activity, with 3-week allowance)
 	firstDate := stats[0].StatDate
 	lastDate := stats[len(stats)-1].StatDate
-	totalMonths := int(lastDate.Sub(firstDate).Hours()/24/30) + 1
+
+	// Calculate total weeks between first and last activity
+	totalDays := int(lastDate.Sub(firstDate).Hours() / 24)
+	totalWeeks := (totalDays / 7) + 1 // Add 1 to include the current week
+
+	// Calculate active weeks (weeks with any activity)
+	activeWeeks := make(map[string]bool)
+	for _, stat := range stats {
+		// Get the week number for this stat date
+		year, week := stat.StatDate.ISOWeek()
+		weekKey := fmt.Sprintf("%d-W%02d", year, week)
+		activeWeeks[weekKey] = true
+	}
+
+	// Calculate consistency with 3-week allowance
 	consistencyScore := 0
-	if totalMonths > 0 {
-		consistencyScore = (len(activeMonths) * 100) / totalMonths
+	if totalWeeks > 3 { // Only calculate if there are more than 3 weeks
+		effectiveWeeks := totalWeeks - 3 // Subtract 3-week allowance
+		if effectiveWeeks > 0 {
+			consistencyScore = (len(activeWeeks) * 100) / effectiveWeeks
+		}
+	} else {
+		// If total weeks is 3 or less, consistency is 100% (all weeks are active)
+		consistencyScore = 100
 	}
 
 	// Calculate efficiency metrics
@@ -1721,8 +1753,13 @@ func (s *PeopleStatisticsService) GetPersonOvertimeStats(projectID, githubPerson
 		totalCommits++
 		commitTime := commit.CommitDate
 
-		// Check if commit is outside working hours (9:00-18:00, Monday-Friday)
-		if isOvertime(commitTime) {
+		// Check if commit is outside working hours using project settings
+		isOvertime, err := s.workingHoursSettingsService.IsOvertime(projectID, commitTime)
+		if err != nil {
+			// If error, skip this commit
+			continue
+		}
+		if isOvertime {
 			overtimeCommits++
 		}
 	}
@@ -1732,9 +1769,16 @@ func (s *PeopleStatisticsService) GetPersonOvertimeStats(projectID, githubPerson
 		totalComments++
 		reviewTime := review.SubmittedAt
 
-		// Check if review is outside working hours
-		if reviewTime != nil && isOvertime(*reviewTime) {
-			overtimeComments++
+		// Check if review is outside working hours using project settings
+		if reviewTime != nil {
+			isOvertime, err := s.workingHoursSettingsService.IsOvertime(projectID, *reviewTime)
+			if err != nil {
+				// If error, skip this review
+				continue
+			}
+			if isOvertime {
+				overtimeComments++
+			}
 		}
 	}
 
@@ -1757,29 +1801,4 @@ func (s *PeopleStatisticsService) GetPersonOvertimeStats(projectID, githubPerson
 		"TotalComments":             totalComments,
 		"OvertimeCommentPercentage": overtimeCommentPercentage,
 	}, nil
-}
-
-// isOvertime checks if a given time is outside working hours (9:00-18:00, Monday-Friday)
-// Handles both timezone-aware times (commits) and UTC times (PR reviews)
-func isOvertime(t time.Time) bool {
-	// For commit_date: time already has timezone info, use as-is
-	// For github_created_at: time is UTC, convert to local
-	var localTime time.Time
-	if t.Location() == time.UTC {
-		// UTC time (from PR reviews) - convert to local
-		localTime = t.Local()
-	} else {
-		// Timezone-aware time (from commits) - use as-is
-		localTime = t
-	}
-
-	// Check if it's a weekday (Monday = 1, Sunday = 0)
-	weekday := localTime.Weekday()
-	if weekday == time.Saturday || weekday == time.Sunday {
-		return true
-	}
-
-	// Check if it's outside working hours (9:00-18:00)
-	hour := localTime.Hour()
-	return hour < 9 || hour >= 18
 }
