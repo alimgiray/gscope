@@ -173,7 +173,7 @@ func (s *PeopleStatisticsService) CalculateStatisticsForRepository(projectID, pr
 	// OPTIMIZATION: Only process days that have actual activity
 	for _, date := range activityDates {
 		if err := s.calculateDailyStatisticsOptimized(
-			projectID, projectRepositoryID, githubRepositoryID, date,
+			projectID, projectRepositoryID, date,
 			scoreSettings, excludedExtMap, excludedFolders, emailMerges, personEmailMap,
 			allCommits, allPullRequests, allPRReviews, allCommitFiles, githubPeople,
 		); err != nil {
@@ -239,7 +239,7 @@ func (s *PeopleStatisticsService) findActivityDates(
 
 // calculateDailyStatisticsOptimized calculates statistics for a specific date using pre-loaded data
 func (s *PeopleStatisticsService) calculateDailyStatisticsOptimized(
-	projectID, projectRepositoryID, githubRepositoryID string,
+	projectID, projectRepositoryID string,
 	date time.Time,
 	scoreSettings *models.ScoreSettings,
 	excludedExtMap map[string]bool,
@@ -256,7 +256,7 @@ func (s *PeopleStatisticsService) calculateDailyStatisticsOptimized(
 	// Calculate statistics for each person
 	for _, person := range githubPeople {
 		stats := s.calculatePersonDailyStatsOptimized(
-			projectID, projectRepositoryID, githubRepositoryID, person.ID, date,
+			projectID, projectRepositoryID, person.ID, date,
 			scoreSettings, excludedExtMap, excludedFolders, emailMerges, personEmailMap,
 			allCommits, allPullRequests, allPRReviews, allCommitFiles,
 		)
@@ -274,7 +274,7 @@ func (s *PeopleStatisticsService) calculateDailyStatisticsOptimized(
 
 // calculatePersonDailyStatsOptimized calculates daily statistics for a specific person using pre-loaded data
 func (s *PeopleStatisticsService) calculatePersonDailyStatsOptimized(
-	projectID, projectRepositoryID, githubRepositoryID, githubPersonID string,
+	projectID, projectRepositoryID, githubPersonID string,
 	date time.Time,
 	scoreSettings *models.ScoreSettings,
 	excludedExtMap map[string]bool,
@@ -327,103 +327,6 @@ func (s *PeopleStatisticsService) calculatePersonDailyStatsOptimized(
 	return stats
 }
 
-// calculateDailyStatistics calculates statistics for a specific date
-func (s *PeopleStatisticsService) calculateDailyStatistics(
-	projectID, projectRepositoryID, githubRepositoryID string,
-	date time.Time,
-	scoreSettings *models.ScoreSettings,
-	excludedExtensions []*models.ExcludedExtension,
-	excludedFolders []*models.ExcludedFolder,
-	emailMerges map[string]string,
-	personEmailMap map[string]string,
-) error {
-
-	// Get all GitHub people for this project
-	githubPeople, err := s.githubPersonRepo.GetByProjectID(projectID)
-	if err != nil {
-		return err
-	}
-
-	// Create a map of excluded extensions for quick lookup
-	excludedExtMap := make(map[string]bool)
-	for _, ext := range excludedExtensions {
-		excludedExtMap[ext.Extension] = true
-	}
-
-	// Calculate statistics for each person
-	for _, person := range githubPeople {
-		stats := s.calculatePersonDailyStats(
-			projectID, projectRepositoryID, githubRepositoryID, person.ID, date,
-			scoreSettings, excludedExtMap, excludedFolders, emailMerges, personEmailMap,
-		)
-
-		if stats != nil && (stats.Score > 0 || stats.Commits > 0 || stats.PullRequests > 0 || stats.Comments > 0) {
-			// Upsert if there's any activity (score > 0 or any commits/PRs/comments)
-			if err := s.peopleStatsRepo.Upsert(stats); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-// calculatePersonDailyStats calculates daily statistics for a specific person
-func (s *PeopleStatisticsService) calculatePersonDailyStats(
-	projectID, projectRepositoryID, githubRepositoryID, githubPersonID string,
-	date time.Time,
-	scoreSettings *models.ScoreSettings,
-	excludedExtMap map[string]bool,
-	excludedFolders []*models.ExcludedFolder,
-	emailMerges map[string]string,
-	personEmailMap map[string]string,
-) *models.PeopleStatistics {
-
-	// Get the person's associated email
-	personEmail := personEmailMap[githubPersonID]
-
-	// Initialize commit statistics
-	commits := 0
-	additions := 0
-	deletions := 0
-
-	// Only calculate commit statistics if the person has an email association
-	if personEmail != "" {
-		// Get all emails that should be attributed to this person (including merged emails)
-		emailsToCheck := s.getEmailsForPerson(personEmail, emailMerges)
-
-		// Calculate commit statistics for all emails
-		commits, additions, deletions = s.calculateCommitStatsForEmails(githubRepositoryID, emailsToCheck, date, excludedExtMap, excludedFolders)
-	}
-
-	// Calculate PR statistics (always calculate, regardless of email association)
-	pullRequests := s.calculatePRStats(githubRepositoryID, githubPersonID, date)
-
-	// Calculate comment statistics (always calculate, regardless of email association)
-	comments := s.calculateCommentStats(githubRepositoryID, githubPersonID, date)
-
-	// Create statistics record
-	stats := models.NewPeopleStatistics(projectID, projectRepositoryID, githubPersonID, date)
-	stats.Commits = commits
-	stats.Additions = additions
-	stats.Deletions = deletions
-	stats.PullRequests = pullRequests
-	stats.Comments = comments
-
-	// Calculate score
-	stats.CalculateScore(scoreSettings)
-
-	return stats
-}
-
-// getMergedEmail returns the target email if the given email is merged, otherwise returns the original email
-func (s *PeopleStatisticsService) getMergedEmail(email string, emailMerges map[string]string) string {
-	if targetEmail, exists := emailMerges[email]; exists {
-		return targetEmail
-	}
-	return email
-}
-
 // getEmailsForPerson returns all emails that should be attributed to a person (including merged emails)
 func (s *PeopleStatisticsService) getEmailsForPerson(personEmail string, emailMerges map[string]string) []string {
 	emails := []string{personEmail} // Always include the person's main email
@@ -436,165 +339,6 @@ func (s *PeopleStatisticsService) getEmailsForPerson(personEmail string, emailMe
 	}
 
 	return emails
-}
-
-// calculateCommitStatsForEmails calculates commit statistics for multiple emails
-func (s *PeopleStatisticsService) calculateCommitStatsForEmails(repositoryID string, emails []string, date time.Time, excludedExtMap map[string]bool, excludedFolders []*models.ExcludedFolder) (int, int, int) {
-	totalCommits := 0
-	totalAdditions := 0
-	totalDeletions := 0
-
-	// Calculate stats for each email and sum them up
-	for _, email := range emails {
-		commits, additions, deletions := s.calculateCommitStats(repositoryID, email, date, excludedExtMap, excludedFolders)
-		totalCommits += commits
-		totalAdditions += additions
-		totalDeletions += deletions
-	}
-
-	return totalCommits, totalAdditions, totalDeletions
-}
-
-// calculateCommitStats calculates commit-related statistics for a person on a specific date
-func (s *PeopleStatisticsService) calculateCommitStats(repositoryID, email string, date time.Time, excludedExtMap map[string]bool, excludedFolders []*models.ExcludedFolder) (int, int, int) {
-	// Get all commits for this repository
-	commits, err := s.commitRepo.GetByRepositoryID(repositoryID)
-	if err != nil {
-		return 0, 0, 0
-	}
-
-	totalCommits := 0
-	totalAdditions := 0
-	totalDeletions := 0
-
-	// Filter commits by author email and date
-	for _, commit := range commits {
-		if commit.AuthorEmail != nil && *commit.AuthorEmail == email {
-			// Check if commit is on the specified date (compare year, month, day)
-			commitYear, commitMonth, commitDay := commit.CommitDate.Date()
-			dateYear, dateMonth, dateDay := date.Date()
-
-			if commitYear == dateYear && commitMonth == dateMonth && commitDay == dateDay {
-				// Get commit files for this commit
-				commitFiles, err := s.commitFileRepo.GetByCommitID(commit.ID)
-				if err != nil {
-					// If we can't get commit files, skip this commit
-					continue
-				}
-
-				// Check if any files in this commit are not excluded
-				hasNonExcludedFiles := false
-				commitAdditions := 0
-				commitDeletions := 0
-
-				for _, commitFile := range commitFiles {
-					// Check if this file has an excluded extension
-					if !s.isExcludedExtension(commitFile.Filename, excludedExtMap) {
-						// Check if this file is in an excluded folder
-						if !s.isExcludedFolder(commitFile.Filename, excludedFolders) {
-							hasNonExcludedFiles = true
-							commitAdditions += commitFile.Additions
-							commitDeletions += commitFile.Deletions
-						}
-					}
-				}
-
-				// Only count this commit if it has non-excluded files
-				if hasNonExcludedFiles {
-					// Optimization 1: Skip commits with more than 20,000 total changes
-					totalChanges := commitAdditions + commitDeletions
-					if totalChanges > 20000 {
-						continue
-					}
-
-					// Optimization 2: Skip commits that are deletion-only with more than 5,000 deletions
-					if commitAdditions == 0 && commitDeletions > 5000 {
-						continue
-					}
-
-					totalCommits++
-					totalAdditions += commitAdditions
-					totalDeletions += commitDeletions
-				}
-			}
-		}
-	}
-
-	return totalCommits, totalAdditions, totalDeletions
-}
-
-// calculatePRStats calculates pull request statistics for a person on a specific date
-func (s *PeopleStatisticsService) calculatePRStats(repositoryID, githubPersonID string, date time.Time) int {
-	// Get all pull requests for this repository
-	pullRequests, err := s.pullRequestRepo.GetByRepositoryID(repositoryID)
-	if err != nil {
-		return 0
-	}
-
-	// Get the GitHub person to get their username
-	githubPerson, err := s.githubPersonRepo.GetByID(githubPersonID)
-	if err != nil {
-		return 0
-	}
-
-	count := 0
-	for _, pr := range pullRequests {
-		// Check if PR was created by this person on the specified date
-		if pr.GithubCreatedAt != nil {
-			prYear, prMonth, prDay := pr.GithubCreatedAt.Date()
-			dateYear, dateMonth, dateDay := date.Date()
-
-			if prYear == dateYear && prMonth == dateMonth && prDay == dateDay {
-				// Parse the user JSON to get the login (username)
-				if pr.User != nil {
-					var userData map[string]interface{}
-					if err := json.Unmarshal([]byte(*pr.User), &userData); err == nil {
-						if login, ok := userData["login"].(string); ok {
-							// Check if the PR was created by this GitHub person
-							if login == githubPerson.Username {
-								count++
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return count
-}
-
-// calculateCommentStats calculates comment statistics for a person on a specific date
-func (s *PeopleStatisticsService) calculateCommentStats(repositoryID, githubPersonID string, date time.Time) int {
-	// Get the GitHub person to get their username
-	githubPerson, err := s.githubPersonRepo.GetByID(githubPersonID)
-	if err != nil {
-		return 0
-	}
-
-	// Get all PR reviews for this repository
-	reviews, err := s.prReviewRepo.GetByRepositoryID(repositoryID)
-	if err != nil {
-		return 0
-	}
-
-	count := 0
-	for _, review := range reviews {
-		// Check if review was created by this person on the specified date
-		if review.GithubCreatedAt != nil {
-			reviewYear, reviewMonth, reviewDay := review.GithubCreatedAt.Date()
-			dateYear, dateMonth, dateDay := date.Date()
-
-			if reviewYear == dateYear && reviewMonth == dateMonth && reviewDay == dateDay {
-				// Check if the review was created by this GitHub person
-				if review.ReviewerLogin == githubPerson.Username {
-					count++
-				}
-			}
-		}
-	}
-
-	return count
 }
 
 // isExcludedExtension checks if a file has an excluded extension (case insensitive)
@@ -1793,6 +1537,50 @@ func (s *PeopleStatisticsService) GetPersonOvertimeStats(projectID, githubPerson
 		overtimeCommentPercentage = float64(overtimeComments) / float64(totalComments) * 100
 	}
 
+	// Get working hours settings for display
+	workingHoursSettings, err := s.workingHoursSettingsService.GetByProjectID(projectID)
+	if err != nil {
+		// Use default settings if not found
+		workingHoursSettings = &models.WorkingHoursSettings{
+			StartHour: 9,
+			EndHour:   18,
+			Monday:    true,
+			Tuesday:   true,
+			Wednesday: true,
+			Thursday:  true,
+			Friday:    true,
+			Saturday:  false,
+			Sunday:    false,
+		}
+	}
+
+	// Format working hours description
+	var workingDays []string
+	if workingHoursSettings.Monday {
+		workingDays = append(workingDays, "Monday")
+	}
+	if workingHoursSettings.Tuesday {
+		workingDays = append(workingDays, "Tuesday")
+	}
+	if workingHoursSettings.Wednesday {
+		workingDays = append(workingDays, "Wednesday")
+	}
+	if workingHoursSettings.Thursday {
+		workingDays = append(workingDays, "Thursday")
+	}
+	if workingHoursSettings.Friday {
+		workingDays = append(workingDays, "Friday")
+	}
+	if workingHoursSettings.Saturday {
+		workingDays = append(workingDays, "Saturday")
+	}
+	if workingHoursSettings.Sunday {
+		workingDays = append(workingDays, "Sunday")
+	}
+
+	workingHoursDescription := fmt.Sprintf("Activity outside normal working hours (%02d:00-%02d:00, %s)",
+		workingHoursSettings.StartHour, workingHoursSettings.EndHour, strings.Join(workingDays, ", "))
+
 	return map[string]interface{}{
 		"OvertimeCommits":           overtimeCommits,
 		"TotalCommits":              totalCommits,
@@ -1800,5 +1588,6 @@ func (s *PeopleStatisticsService) GetPersonOvertimeStats(projectID, githubPerson
 		"OvertimeComments":          overtimeComments,
 		"TotalComments":             totalComments,
 		"OvertimeCommentPercentage": overtimeCommentPercentage,
+		"WorkingHoursDescription":   workingHoursDescription,
 	}, nil
 }

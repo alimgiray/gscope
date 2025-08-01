@@ -256,8 +256,9 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			repoJobs = []*models.Job{}
 		}
 
-		// Calculate analyze job status (repository-specific jobs)
-		hasActiveAnalyzeJobs := false
+		// Calculate job status for all job types
+		hasActiveJobs := false
+		activeJobType := ""
 		latestAnalyzeJobFailed := false
 		latestAnalyzeJobError := ""
 		failedAnalyzeJobID := ""
@@ -267,7 +268,16 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			return repoJobs[i].CreatedAt.After(repoJobs[j].CreatedAt)
 		})
 
-		// Find the latest pull request job
+		// Check for any active jobs (pending or in progress)
+		for _, job := range repoJobs {
+			if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+				hasActiveJobs = true
+				activeJobType = string(job.JobType)
+				break
+			}
+		}
+
+		// Find the latest pull request job for failed job tracking
 		var latestPullRequestJob *models.Job
 		for _, job := range repoJobs {
 			if job.JobType == models.JobTypePullRequest {
@@ -276,27 +286,25 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			}
 		}
 
-		// Check analyze job status based on the latest pull request job only
-		if latestPullRequestJob != nil {
-			if latestPullRequestJob.Status == models.JobStatusPending || latestPullRequestJob.Status == models.JobStatusInProgress {
-				hasActiveAnalyzeJobs = true
-			} else if latestPullRequestJob.Status == models.JobStatusFailed {
-				latestAnalyzeJobFailed = true
-				failedAnalyzeJobID = latestPullRequestJob.ID
-				if latestPullRequestJob.ErrorMessage != nil {
-					latestAnalyzeJobError = *latestPullRequestJob.ErrorMessage
-				}
+		// Check for failed analyze jobs (pull request or stats)
+		if latestPullRequestJob != nil && latestPullRequestJob.Status == models.JobStatusFailed {
+			latestAnalyzeJobFailed = true
+			failedAnalyzeJobID = latestPullRequestJob.ID
+			if latestPullRequestJob.ErrorMessage != nil {
+				latestAnalyzeJobError = *latestPullRequestJob.ErrorMessage
 			}
 		}
 
-		// Also check for active stats jobs (stats depends on pull_request)
-		if !hasActiveAnalyzeJobs {
+		// Also check for failed stats jobs
+		if !latestAnalyzeJobFailed {
 			for _, job := range repoJobs {
-				if job.JobType == models.JobTypeStats {
-					if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
-						hasActiveAnalyzeJobs = true
-						break
+				if job.JobType == models.JobTypeStats && job.Status == models.JobStatusFailed {
+					latestAnalyzeJobFailed = true
+					failedAnalyzeJobID = job.ID
+					if job.ErrorMessage != nil {
+						latestAnalyzeJobError = *job.ErrorMessage
 					}
+					break
 				}
 			}
 		}
@@ -354,7 +362,8 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 			"LatestCloneJobFailed":        latestCloneJobFailed,
 			"LatestCloneJobError":         latestCloneJobError,
 			"FailedCloneJobID":            failedCloneJobID,
-			"HasActiveAnalyzeJobs":        hasActiveAnalyzeJobs,
+			"HasActiveJobs":               hasActiveJobs,
+			"ActiveJobType":               activeJobType,
 			"LatestAnalyzeJobFailed":      latestAnalyzeJobFailed,
 			"LatestAnalyzeJobError":       latestAnalyzeJobError,
 			"FailedAnalyzeJobID":          failedAnalyzeJobID,
@@ -3111,29 +3120,18 @@ func (h *ProjectHandler) ViewRepository(c *gin.Context) {
 	}
 
 	// Calculate job statuses
-	hasActiveCloneJobs := false
-	hasActiveAnalyzeJobs := false
+	hasActiveJobs := false
+	activeJobType := ""
 	hasCompletedPullRequestJobs := false
 	isRepositoryCloned := githubRepo.IsCloned
 	hasGitHubPeopleWithEmails := false
 
-	// Check for active clone or commit jobs
+	// Check for any active jobs (pending or in progress)
 	for _, job := range allJobs {
-		if job.JobType == models.JobTypeClone || job.JobType == models.JobTypeCommit {
-			if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
-				hasActiveCloneJobs = true
-				break
-			}
-		}
-	}
-
-	// Check for active pull_request or stats jobs
-	for _, job := range allJobs {
-		if job.JobType == models.JobTypePullRequest || job.JobType == models.JobTypeStats {
-			if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
-				hasActiveAnalyzeJobs = true
-				break
-			}
+		if job.Status == models.JobStatusPending || job.Status == models.JobStatusInProgress {
+			hasActiveJobs = true
+			activeJobType = string(job.JobType)
+			break
 		}
 	}
 
@@ -3383,8 +3381,8 @@ func (h *ProjectHandler) ViewRepository(c *gin.Context) {
 		"Repository":                  githubRepo,
 		"ProjectRepo":                 projectRepo,
 		"AccessType":                  accessType,
-		"HasActiveCloneJobs":          hasActiveCloneJobs,
-		"HasActiveAnalyzeJobs":        hasActiveAnalyzeJobs,
+		"HasActiveJobs":               hasActiveJobs,
+		"ActiveJobType":               activeJobType,
 		"HasCompletedPullRequestJobs": hasCompletedPullRequestJobs,
 		"IsRepositoryCloned":          isRepositoryCloned,
 		"HasGitHubPeopleWithEmails":   hasGitHubPeopleWithEmails,

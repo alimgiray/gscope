@@ -226,53 +226,55 @@
                             </div>
                         </div>
                         <div class="flex flex-col gap-2 ml-4">
-                        {{if .ProjectRepo.IsTracked}}
-                            {{if .HasActiveCloneJobs}}
-                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being cloned">
-                                    Cloning...
-                                </button>
-                            {{else if .LatestCloneJobFailed}}
-                                <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
-                                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                        title="Retry the last failed clone job">
-                                    Retry Clone
-                                </button>
-                            {{else}}
-                                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                                        class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .GitHubRepo.IsCloned}}Pull latest changes from GitHub{{else}}Clone this repository to local storage{{end}}">
-                                    {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
-                                </button>
-                            {{end}}
-                        {{end}}
-                        {{if .ProjectRepo.IsTracked}}
-                            {{if .HasActiveAnalyzeJobs}}
-                                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being analyzed or fetched">
-                                    Processing...
-                                </button>
-                            {{else if .LatestAnalyzeJobFailed}}
-                                <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
-                                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                        title="Retry the last failed analyze job">
-                                    Retry Analyze
-                                </button>
-                            {{else}}
-                                <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                                        class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Fetch latest pull requests and reviews from GitHub for this repository">
-                                    Fetch Github
-                                </button>
-                                {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
-                                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Analyze this repository for statistics and insights">
-                                        Analyze
+                        {{if .HasActiveJobs}}
+                            <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being processed ({{.ActiveJobType}})">
+                                Processing...
+                            </button>
+                        {{else}}
+                            {{if .ProjectRepo.IsTracked}}
+                                {{if .HasActiveCloneJobs}}
+                                    <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being cloned">
+                                        Cloning...
+                                    </button>
+                                {{else if .LatestCloneJobFailed}}
+                                    <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
+                                            class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                            title="Retry the last failed clone job">
+                                        Retry Clone
                                     </button>
                                 {{else}}
-                                    <button disabled class="text-xs bg-gray-600 text-gray-300 px-3 py-1 rounded cursor-not-allowed opacity-50" 
-                                            title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
-                                        Analyze
+                                    <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                            class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .GitHubRepo.IsCloned}}Pull latest changes from GitHub{{else}}Clone this repository to local storage{{end}}">
+                                        {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
                                     </button>
+                                {{end}}
+                                
+                                {{if .LatestAnalyzeJobFailed}}
+                                    <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
+                                            class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                                            title="Retry the last failed analyze job">
+                                        Retry Analyze
+                                    </button>
+                                {{else}}
+                                    <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                            class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Fetch latest pull requests and reviews from GitHub for this repository">
+                                        Fetch Github
+                                    </button>
+                                    {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
+                                        <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                                class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Analyze this repository for statistics and insights">
+                                            Analyze
+                                        </button>
+                                    {{else}}
+                                        <button disabled class="text-xs bg-gray-600 text-gray-300 px-3 py-1 rounded cursor-not-allowed opacity-50" 
+                                                title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
+                                            Analyze
+                                        </button>
+                                    {{end}}
                                 {{end}}
                             {{end}}
                         {{end}}
+                        
                         <button onclick="toggleTracking('{{$.Project.ID}}', '{{.ProjectRepo.ID}}', '{{if .ProjectRepo.IsTracked}}true{{else}}false{{end}}')" 
                                 class="text-xs {{if .ProjectRepo.IsTracked}}bg-red-600 hover:bg-red-500{{else}}bg-green-600 hover:bg-green-500{{end}} text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .ProjectRepo.IsTracked}}Stop tracking this repository{{else}}Start tracking this repository{{end}}">
                             {{if .ProjectRepo.IsTracked}}Untrack{{else}}Track{{end}}
@@ -358,8 +360,20 @@ function restoreScrollPosition() {
 // Auto-refresh functionality for active jobs
 function hasActiveJobs() {
     // Look for disabled buttons with yellow background (active job indicators)
-    const activeJobButtons = document.querySelectorAll('button[disabled].bg-yellow-600');
-    return activeJobButtons.length > 0;
+    // Check for both the template-generated "Processing..." buttons and JavaScript-updated buttons
+    const activeJobButtons = document.querySelectorAll('button[disabled].bg-yellow-600, button[disabled][style*="opacity"]');
+    
+    // Also check for buttons with "Processing...", "Cloning...", "Fetching...", or "Analyzing..." text
+    const processingButtons = document.querySelectorAll('button[disabled]');
+    let hasProcessingText = false;
+    processingButtons.forEach(button => {
+        const text = button.textContent.trim();
+        if (text === 'Processing...' || text === 'Cloning...' || text === 'Fetching...' || text === 'Analyzing...') {
+            hasProcessingText = true;
+        }
+    });
+    
+    return activeJobButtons.length > 0 || hasProcessingText;
 }
 
 function showAutoRefreshIndicator() {
@@ -548,12 +562,19 @@ function cloneRepository(projectId, repositoryId) {
     // Prevent any default behavior that might cause scroll jump
     event.preventDefault();
     
-    // Find the button that was clicked and disable it immediately
-    const button = event.target;
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Cloning...';
-    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+    // Find the repository section and disable all buttons
+    const repositorySection = event.target.closest('[data-repository-id]');
+    if (repositorySection) {
+        const allButtons = repositorySection.querySelectorAll('button');
+        allButtons.forEach(btn => {
+            btn.disabled = true;
+            btn.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+        });
+        
+        // Update the clicked button text
+        const button = event.target;
+        button.textContent = 'Cloning...';
+    }
     
     fetch(`/projects/${projectId}/repositories/${repositoryId}/clone`, {
         method: 'POST',
@@ -568,19 +589,45 @@ function cloneRepository(projectId, repositoryId) {
             // Start auto-refresh instead of immediate reload
             startAutoRefresh();
         } else {
-            // Restore button state on error
-            button.disabled = false;
-            button.textContent = originalText;
-            button.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+            // Restore all button states on error
+            if (repositorySection) {
+                const allButtons = repositorySection.querySelectorAll('button');
+                allButtons.forEach(btn => {
+                    btn.disabled = false;
+                    // Restore original classes based on button type
+                    if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                        btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Fetch')) {
+                        btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Analyze')) {
+                        btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                        btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    }
+                });
+            }
             showToast(data.message || 'Failed to create clone job', 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        // Restore button state on error
-        button.disabled = false;
-        button.textContent = originalText;
-        button.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+        // Restore all button states on error
+        if (repositorySection) {
+            const allButtons = repositorySection.querySelectorAll('button');
+            allButtons.forEach(btn => {
+                btn.disabled = false;
+                // Restore original classes based on button type
+                if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                    btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Fetch')) {
+                    btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Analyze')) {
+                    btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                    btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                }
+            });
+        }
         showToast('Failed to create clone job', 'error');
     });
 }
@@ -619,12 +666,19 @@ function fetchGithub(projectId, repositoryId) {
     // Prevent any default behavior that might cause scroll jump
     event.preventDefault();
     
-    // Find the button that was clicked and disable it immediately
-    const button = event.target;
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Fetching...';
-    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+    // Find the repository section and disable all buttons
+    const repositorySection = event.target.closest('[data-repository-id]');
+    if (repositorySection) {
+        const allButtons = repositorySection.querySelectorAll('button');
+        allButtons.forEach(btn => {
+            btn.disabled = true;
+            btn.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+        });
+        
+        // Update the clicked button text
+        const button = event.target;
+        button.textContent = 'Fetching...';
+    }
     
     fetch(`/projects/${projectId}/repositories/${repositoryId}/fetch-github`, {
         method: 'POST',
@@ -639,19 +693,45 @@ function fetchGithub(projectId, repositoryId) {
             // Start auto-refresh instead of immediate reload
             startAutoRefresh();
         } else {
-            // Restore button state on error
-            button.disabled = false;
-            button.textContent = originalText;
-            button.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+            // Restore all button states on error
+            if (repositorySection) {
+                const allButtons = repositorySection.querySelectorAll('button');
+                allButtons.forEach(btn => {
+                    btn.disabled = false;
+                    // Restore original classes based on button type
+                    if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                        btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Fetch')) {
+                        btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Analyze')) {
+                        btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                        btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    }
+                });
+            }
             showToast(data.message || 'Failed to create fetch Github job', 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        // Restore button state on error
-        button.disabled = false;
-        button.textContent = originalText;
-        button.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+        // Restore all button states on error
+        if (repositorySection) {
+            const allButtons = repositorySection.querySelectorAll('button');
+            allButtons.forEach(btn => {
+                btn.disabled = false;
+                // Restore original classes based on button type
+                if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                    btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Fetch')) {
+                    btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Analyze')) {
+                    btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                    btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                }
+            });
+        }
         showToast('Failed to create fetch Github job', 'error');
     });
 }
@@ -660,12 +740,19 @@ function analyzeRepository(projectId, repositoryId) {
     // Prevent any default behavior that might cause scroll jump
     event.preventDefault();
     
-    // Find the button that was clicked and disable it immediately
-    const button = event.target;
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Analyzing...';
-    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+    // Find the repository section and disable all buttons
+    const repositorySection = event.target.closest('[data-repository-id]');
+    if (repositorySection) {
+        const allButtons = repositorySection.querySelectorAll('button');
+        allButtons.forEach(btn => {
+            btn.disabled = true;
+            btn.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+        });
+        
+        // Update the clicked button text
+        const button = event.target;
+        button.textContent = 'Analyzing...';
+    }
     
     fetch(`/projects/${projectId}/repositories/${repositoryId}/analyze`, {
         method: 'POST',
@@ -680,19 +767,45 @@ function analyzeRepository(projectId, repositoryId) {
             // Start auto-refresh instead of immediate reload
             startAutoRefresh();
         } else {
-            // Restore button state on error
-            button.disabled = false;
-            button.textContent = originalText;
-            button.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+            // Restore all button states on error
+            if (repositorySection) {
+                const allButtons = repositorySection.querySelectorAll('button');
+                allButtons.forEach(btn => {
+                    btn.disabled = false;
+                    // Restore original classes based on button type
+                    if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                        btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Fetch')) {
+                        btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Analyze')) {
+                        btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                        btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    }
+                });
+            }
             showToast(data.message || 'Failed to create analysis job', 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        // Restore button state on error
-        button.disabled = false;
-        button.textContent = originalText;
-        button.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+        // Restore all button states on error
+        if (repositorySection) {
+            const allButtons = repositorySection.querySelectorAll('button');
+            allButtons.forEach(btn => {
+                btn.disabled = false;
+                // Restore original classes based on button type
+                if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                    btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Fetch')) {
+                    btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Analyze')) {
+                    btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                    btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                }
+            });
+        }
         showToast('Failed to create analysis job', 'error');
     });
 }
@@ -872,12 +985,20 @@ function retryFailedJob(jobId) {
     // Prevent any default behavior that might cause scroll jump
     event.preventDefault();
     
-    // Find the button that was clicked and disable it immediately
+    // Find the repository section and disable all buttons
+    const repositorySection = event.target.closest('[data-repository-id]');
+    if (repositorySection) {
+        const allButtons = repositorySection.querySelectorAll('button');
+        allButtons.forEach(btn => {
+            btn.disabled = true;
+            btn.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
+        });
+    }
+    
+    // Find the button that was clicked and update its text
     const button = event.target;
     const originalText = button.textContent;
-    button.disabled = true;
     button.textContent = 'Retrying...';
-    button.className = 'text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50';
     
     fetch(`/projects/jobs/${jobId}/retry`, {
         method: 'POST',
@@ -903,19 +1024,49 @@ function retryFailedJob(jobId) {
             // Start auto-refresh instead of immediate reload
             startAutoRefresh();
         } else if (data) {
-            // Restore button state on error
-            button.disabled = false;
-            button.textContent = originalText;
-            button.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+            // Restore all button states on error
+            if (repositorySection) {
+                const allButtons = repositorySection.querySelectorAll('button');
+                allButtons.forEach(btn => {
+                    btn.disabled = false;
+                    // Restore original classes based on button type
+                    if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                        btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Fetch')) {
+                        btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Analyze')) {
+                        btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                        btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    } else if (btn.textContent.includes('Retry')) {
+                        btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                    }
+                });
+            }
             showToast(data.message || 'Failed to create retry job', 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        // Restore button state on error
-        button.disabled = false;
-        button.textContent = originalText;
-        button.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+        // Restore all button states on error
+        if (repositorySection) {
+            const allButtons = repositorySection.querySelectorAll('button');
+            allButtons.forEach(btn => {
+                btn.disabled = false;
+                // Restore original classes based on button type
+                if (btn.textContent.includes('Clone') || btn.textContent.includes('Pull')) {
+                    btn.className = 'text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Fetch')) {
+                    btn.className = 'text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Analyze')) {
+                    btn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Track') || btn.textContent.includes('Untrack')) {
+                    btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                } else if (btn.textContent.includes('Retry')) {
+                    btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200';
+                }
+            });
+        }
         showToast('Failed to create retry job', 'error');
     });
 }

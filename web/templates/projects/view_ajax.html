@@ -33,50 +33,51 @@
             </div>
         </div>
         <div class="flex flex-col gap-2 ml-4">
-        {{if .ProjectRepo.IsTracked}}
-            {{if .HasActiveCloneJobs}}
-                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being cloned">
-                    Cloning...
-                </button>
-            {{else if .LatestCloneJobFailed}}
-                <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
-                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                        title="Retry the last failed clone job">
-                    Retry Clone
-                </button>
-            {{else}}
-                <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                        class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .GitHubRepo.IsCloned}}Pull latest changes from GitHub{{else}}Clone this repository to local storage{{end}}">
-                    {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
-                </button>
-            {{end}}
-        {{end}}
-        {{if .ProjectRepo.IsTracked}}
-            {{if .HasActiveAnalyzeJobs}}
-                <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being analyzed or fetched">
-                    Processing...
-                </button>
-            {{else if .LatestAnalyzeJobFailed}}
-                <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
-                        class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                        title="Retry the last failed analyze job">
-                    Retry Analyze
-                </button>
-            {{else}}
-                <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                        class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Fetch latest pull requests and reviews from GitHub for this repository">
-                    Fetch Github
-                </button>
-                {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
-                    <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
-                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Analyze this repository for statistics and insights">
-                        Analyze
+        {{if .HasActiveJobs}}
+            <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being processed ({{.ActiveJobType}})">
+                Processing...
+            </button>
+        {{else}}
+            {{if .ProjectRepo.IsTracked}}
+                {{if .HasActiveCloneJobs}}
+                    <button disabled class="text-xs bg-yellow-600 text-white px-3 py-1 rounded cursor-not-allowed opacity-50" title="Repository is currently being cloned">
+                        Cloning...
+                    </button>
+                {{else if .LatestCloneJobFailed}}
+                    <button onclick="retryFailedJob('{{.FailedCloneJobID}}')" 
+                            class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                            title="Retry the last failed clone job">
+                        Retry Clone
                     </button>
                 {{else}}
-                    <button disabled class="text-xs bg-gray-600 text-gray-300 px-3 py-1 rounded cursor-not-allowed opacity-50" 
-                            title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
-                        Analyze
+                    <button onclick="cloneRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                            class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded transition-colors duration-200" title="{{if .GitHubRepo.IsCloned}}Pull latest changes from GitHub{{else}}Clone this repository to local storage{{end}}">
+                        {{if .GitHubRepo.IsCloned}}Pull Changes{{else}}Clone{{end}}
                     </button>
+                {{end}}
+                
+                {{if .LatestAnalyzeJobFailed}}
+                    <button onclick="retryFailedJob('{{.FailedAnalyzeJobID}}')" 
+                            class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
+                            title="Retry the last failed analyze job">
+                        Retry Analyze
+                    </button>
+                {{else}}
+                    <button onclick="fetchGithub('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                            class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Fetch latest pull requests and reviews from GitHub for this repository">
+                        Fetch Github
+                    </button>
+                    {{if and .HasCompletedPullRequestJobs .IsRepositoryCloned .HasGitHubPeopleWithEmails}}
+                        <button onclick="analyzeRepository('{{$.Project.ID}}', '{{.ProjectRepo.ID}}')" 
+                                class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" title="Analyze this repository for statistics and insights">
+                            Analyze
+                        </button>
+                    {{else}}
+                        <button disabled class="text-xs bg-gray-600 text-gray-300 px-3 py-1 rounded cursor-not-allowed opacity-50" 
+                                title="{{if not .HasCompletedPullRequestJobs}}Fetch Github must be called first{{else if not .IsRepositoryCloned}}Repository must be cloned first{{else if not .HasGitHubPeopleWithEmails}}You need at least 1 GitHub account with an email associated to run analyze{{end}}">
+                            Analyze
+                        </button>
+                    {{end}}
                 {{end}}
             {{end}}
         {{end}}

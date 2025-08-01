@@ -80,8 +80,8 @@
             {{end}}
             
             {{if .ProjectRepo.IsTracked}}
-                {{if .HasActiveAnalyzeJobs}}
-                    <button disabled class="w-full bg-yellow-600 text-white px-4 py-3 rounded cursor-not-allowed opacity-50">
+                {{if .HasActiveJobs}}
+                    <button disabled class="w-full bg-yellow-600 text-white px-4 py-3 rounded cursor-not-allowed opacity-50" title="Repository is currently being processed ({{.ActiveJobType}})">
                         Processing...
                     </button>
                 {{else}}
