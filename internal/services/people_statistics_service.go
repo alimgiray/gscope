@@ -31,6 +31,7 @@ type PeopleStatisticsService struct {
 	githubRepoRepo              *repositories.GitHubRepositoryRepository
 	projectRepositoryRepo       *repositories.ProjectRepositoryRepository
 	workingHoursSettingsService *WorkingHoursSettingsService
+	projectGithubPersonService  *ProjectGithubPersonService
 }
 
 func NewPeopleStatisticsService(
@@ -49,6 +50,7 @@ func NewPeopleStatisticsService(
 	githubRepoRepo *repositories.GitHubRepositoryRepository,
 	projectRepositoryRepo *repositories.ProjectRepositoryRepository,
 	workingHoursSettingsService *WorkingHoursSettingsService,
+	projectGithubPersonService *ProjectGithubPersonService,
 ) *PeopleStatisticsService {
 	return &PeopleStatisticsService{
 		peopleStatsRepo:             peopleStatsRepo,
@@ -66,6 +68,7 @@ func NewPeopleStatisticsService(
 		githubRepoRepo:              githubRepoRepo,
 		projectRepositoryRepo:       projectRepositoryRepo,
 		workingHoursSettingsService: workingHoursSettingsService,
+		projectGithubPersonService:  projectGithubPersonService,
 	}
 }
 
@@ -164,10 +167,19 @@ func (s *PeopleStatisticsService) CalculateStatisticsForRepository(projectID, pr
 		excludedExtMap[ext.Extension] = true
 	}
 
-	// Get all GitHub people for this project
-	githubPeople, err := s.githubPersonRepo.GetByProjectID(projectID)
+	// Get all active GitHub people for this project (excluding deleted ones)
+	projectGithubPeople, err := s.projectGithubPersonService.GetProjectGithubPeopleByProjectID(projectID)
 	if err != nil {
 		return err
+	}
+
+	// Get the actual GitHub person details
+	var githubPeople []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := s.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			githubPeople = append(githubPeople, person)
+		}
 	}
 
 	// OPTIMIZATION: Only process days that have actual activity
@@ -409,10 +421,19 @@ func (s *PeopleStatisticsService) DeleteStatisticsByRepository(repositoryID stri
 
 // GetAllTimeStatisticsByProject retrieves aggregated statistics for all GitHub people in a project
 func (s *PeopleStatisticsService) GetAllTimeStatisticsByProject(projectID string) ([]*models.GitHubPersonStats, error) {
-	// Get all GitHub people for this project
-	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	// Get all active GitHub people for this project (excluding deleted ones)
+	projectGithubPeople, err := s.projectGithubPersonService.GetProjectGithubPeopleByProjectID(projectID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get the actual GitHub person details
+	var people []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := s.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			people = append(people, person)
+		}
 	}
 
 	var results []*models.GitHubPersonStats
@@ -464,10 +485,19 @@ func (s *PeopleStatisticsService) GetAllTimeStatisticsByProject(projectID string
 
 // GetYearlyStatisticsByProject retrieves yearly statistics for a project
 func (s *PeopleStatisticsService) GetYearlyStatisticsByProject(projectID string, year int) ([]*models.GitHubPersonStats, error) {
-	// Get all GitHub people for this project
-	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	// Get all active GitHub people for this project (excluding deleted ones)
+	projectGithubPeople, err := s.projectGithubPersonService.GetProjectGithubPeopleByProjectID(projectID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get the actual GitHub person details
+	var people []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := s.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			people = append(people, person)
+		}
 	}
 
 	var results []*models.GitHubPersonStats
@@ -535,10 +565,19 @@ func (s *PeopleStatisticsService) GetAvailableYearsForProject(projectID string) 
 
 // GetMonthlyStatisticsByProject retrieves monthly statistics for a project
 func (s *PeopleStatisticsService) GetMonthlyStatisticsByProject(projectID string, year int, month int) ([]*models.GitHubPersonStats, error) {
-	// Get all GitHub people for this project
-	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	// Get all active GitHub people for this project (excluding deleted ones)
+	projectGithubPeople, err := s.projectGithubPersonService.GetProjectGithubPeopleByProjectID(projectID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get the actual GitHub person details
+	var people []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := s.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			people = append(people, person)
+		}
 	}
 
 	var results []*models.GitHubPersonStats
@@ -607,10 +646,19 @@ func (s *PeopleStatisticsService) GetAvailableMonthsForProject(projectID string)
 
 // GetWeeklyStatisticsByProject retrieves weekly statistics for a project
 func (s *PeopleStatisticsService) GetWeeklyStatisticsByProject(projectID string, year int, week int) ([]*models.GitHubPersonStats, error) {
-	// Get all GitHub people for this project
-	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	// Get all active GitHub people for this project (excluding deleted ones)
+	projectGithubPeople, err := s.projectGithubPersonService.GetProjectGithubPeopleByProjectID(projectID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get the actual GitHub person details
+	var people []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := s.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			people = append(people, person)
+		}
 	}
 
 	var results []*models.GitHubPersonStats
@@ -680,10 +728,19 @@ func (s *PeopleStatisticsService) GetAvailableWeeksForProject(projectID string) 
 
 // GetDailyStatisticsByProject retrieves daily statistics for a project
 func (s *PeopleStatisticsService) GetDailyStatisticsByProject(projectID string, date time.Time) ([]*models.GitHubPersonStats, error) {
-	// Get all GitHub people for this project
-	people, err := s.githubPersonRepo.GetByProjectID(projectID)
+	// Get all active GitHub people for this project (excluding deleted ones)
+	projectGithubPeople, err := s.projectGithubPersonService.GetProjectGithubPeopleByProjectID(projectID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get the actual GitHub person details
+	var people []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := s.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			people = append(people, person)
+		}
 	}
 
 	var results []*models.GitHubPersonStats

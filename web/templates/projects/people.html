@@ -11,9 +11,9 @@
     </div>
 </div>
 
-<!-- People Section -->
+<!-- Active People Section -->
 <div class="card mt-4">
-    <div class="card-header">GitHub People</div>
+    <div class="card-header">Active GitHub People</div>
     <div class="card-body">
         {{if .People}}
             <div class="space-y-4">
@@ -81,15 +81,72 @@
                             </button>
                         </div>
                         {{end}}
+                        
+                        <!-- Remove Button -->
+                        <div class="flex flex-col gap-2 ml-4">
+                            <button onclick="removePerson('{{$.Project.ID.String}}', '{{.ID}}')" 
+                                    class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200">
+                                Remove
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {{end}}
             </div>
         {{else}}
-            <p class="text-xs text-gray-400">No people found. Analyze pull requests to discover GitHub people.</p>
+            <p class="text-xs text-gray-400">No active people found. Analyze pull requests to discover GitHub people.</p>
         {{end}}
     </div>
 </div>
+
+<!-- Deleted People Section -->
+{{if .DeletedPeople}}
+<div class="card mt-4">
+    <div class="card-header text-gray-400">Removed People</div>
+    <div class="card-body">
+        <div class="space-y-4">
+            {{range .DeletedPeople}}
+            <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-30 opacity-60">
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-2">
+                            {{if .AvatarURL}}
+                                <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-8 h-8 rounded-full">
+                            {{end}}
+                            <span class="text-sm font-mono font-semibold text-gray-400">{{.Username}}</span>
+                            {{if .DisplayName}}
+                                <span class="text-xs text-gray-500">({{.DisplayName}})</span>
+                            {{end}}
+                            {{if .Type}}
+                                <span class="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">{{.Type}}</span>
+                            {{end}}
+                        </div>
+                        
+                        <div class="space-y-1 text-xs text-gray-500">
+                            {{if .ProfileURL}}
+                                <p>
+                                    <a href="{{.ProfileURL}}" target="_blank" class="text-gray-500 hover:text-gray-400">View Profile</a>
+                                </p>
+                            {{end}}
+                            <p>GitHub ID: {{.GithubUserID}}</p>
+                            <p>Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Restore Button -->
+                    <div class="flex flex-col gap-2 ml-4">
+                        <button onclick="restorePerson('{{$.Project.ID.String}}', '{{.ID}}')" 
+                                class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200">
+                            Restore
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{end}}
 
 <script>
 let emailTargets = {};
@@ -156,6 +213,60 @@ function detachEmail(projectId, email) {
     .catch(error => {
         console.error('Error:', error);
         alert('Failed to detach email');
+    });
+}
+
+function removePerson(projectId, githubPersonId) {
+    if (!confirm('Are you sure you want to remove this person? They will be moved to the removed section and can be restored later.')) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('github_person_id', githubPersonId);
+
+    fetch(`/projects/${projectId}/people/remove`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            // Reload the page to show updated state
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to remove person');
+    });
+}
+
+function restorePerson(projectId, githubPersonId) {
+    if (!confirm('Are you sure you want to restore this person?')) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('github_person_id', githubPersonId);
+
+    fetch(`/projects/${projectId}/people/restore`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            // Reload the page to show updated state
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to restore person');
     });
 }
 </script>

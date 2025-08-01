@@ -101,6 +101,7 @@ func main() {
 		githubRepoRepo,
 		projectRepositoryRepo,
 		workingHoursSettingsService,
+		projectGithubPersonService,
 	)
 
 	// Project update settings service
@@ -134,7 +135,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService)
 	loadTemplates(router)
 
 	// Start workers
@@ -191,12 +192,12 @@ func main() {
 	logger.Info("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, pullRequestRepo *repositories.PullRequestRepository, prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, pullRequestRepo *repositories.PullRequestRepository, prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService, projectGithubPersonService *services.ProjectGithubPersonService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService, projectCollaboratorService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService)
 	workingHoursSettingsHandler := handlers.NewWorkingHoursSettingsHandler(workingHoursSettingsService)
 	healthHandler := handlers.NewHealthHandler()
 
@@ -230,6 +231,8 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.GET("/:id/repositories/:repository_id", projectHandler.ViewRepository)
 		projects.POST("/:id/people/associate", projectHandler.CreateGitHubPersonEmailAssociation)
 		projects.POST("/:id/people/detach", projectHandler.DeleteGitHubPersonEmailAssociation)
+		projects.POST("/:id/people/remove", projectHandler.SoftDeletePerson)
+		projects.POST("/:id/people/restore", projectHandler.RestorePerson)
 		projects.GET("/:id/reports", projectHandler.ViewProjectReports)
 		projects.GET("/:id/reports/daily", projectHandler.ViewProjectReportsDaily)
 		projects.GET("/:id/reports/weekly", projectHandler.ViewProjectReportsWeekly)

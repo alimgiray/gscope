@@ -40,3 +40,28 @@ func (s *ProjectGithubPersonService) DeleteProjectGithubPerson(id string) error 
 func (s *ProjectGithubPersonService) DeleteByProjectAndGithubPerson(projectID, githubPersonID string) error {
 	return s.projectGithubPersonRepo.DeleteByProjectAndGithubPerson(projectID, githubPersonID)
 }
+
+// GetProjectGithubPeopleByProjectIDIncludingDeleted retrieves all project-github person relationships for a project including deleted ones
+func (s *ProjectGithubPersonService) GetProjectGithubPeopleByProjectIDIncludingDeleted(projectID string) ([]*models.ProjectGithubPerson, error) {
+	return s.projectGithubPersonRepo.GetByProjectIDIncludingDeleted(projectID)
+}
+
+// SoftDeleteProjectGithubPerson soft deletes a project-github person relationship
+func (s *ProjectGithubPersonService) SoftDeleteProjectGithubPerson(id string) error {
+	return s.projectGithubPersonRepo.SoftDelete(id)
+}
+
+// SoftDeleteByProjectAndGithubPerson soft deletes a project-github person relationship by project and GitHub person IDs
+func (s *ProjectGithubPersonService) SoftDeleteByProjectAndGithubPerson(projectID, githubPersonID string) error {
+	return s.projectGithubPersonRepo.SoftDeleteByProjectAndGithubPerson(projectID, githubPersonID)
+}
+
+// RestoreProjectGithubPerson restores a soft-deleted project-github person relationship
+func (s *ProjectGithubPersonService) RestoreProjectGithubPerson(id string) error {
+	return s.projectGithubPersonRepo.Restore(id)
+}
+
+// RestoreByProjectAndGithubPerson restores a soft-deleted project-github person relationship by project and GitHub person IDs
+func (s *ProjectGithubPersonService) RestoreByProjectAndGithubPerson(projectID, githubPersonID string) error {
+	return s.projectGithubPersonRepo.RestoreByProjectAndGithubPerson(projectID, githubPersonID)
+}

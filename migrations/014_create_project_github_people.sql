@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS project_github_people (
     source_type TEXT NOT NULL, -- "pull_request", "contributor", "commit_author"
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_deleted INTEGER DEFAULT 0,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (github_person_id) REFERENCES github_people(id) ON DELETE CASCADE,
     UNIQUE(project_id, github_person_id)
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS project_github_people (
 CREATE INDEX IF NOT EXISTS idx_project_github_people_project_id ON project_github_people(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_github_people_github_person_id ON project_github_people(github_person_id);
 CREATE INDEX IF NOT EXISTS idx_project_github_people_source_type ON project_github_people(source_type);
+CREATE INDEX IF NOT EXISTS idx_project_github_people_is_deleted ON project_github_people(is_deleted);
 
 -- Trigger to update updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_project_github_people_updated_at

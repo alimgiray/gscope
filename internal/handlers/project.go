@@ -41,6 +41,7 @@ type ProjectHandler struct {
 	projectUpdateSettingsService *services.ProjectUpdateSettingsService
 	projectCollaboratorService   *services.ProjectCollaboratorService
 	workingHoursSettingsService  *services.WorkingHoursSettingsService
+	projectGithubPersonService   *services.ProjectGithubPersonService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
@@ -50,7 +51,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 	prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository,
 	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
 	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService,
-	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService) *ProjectHandler {
+	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService, projectGithubPersonService *services.ProjectGithubPersonService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:               projectService,
 		userService:                  userService,
@@ -73,6 +74,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		projectUpdateSettingsService: projectUpdateSettingsService,
 		projectCollaboratorService:   projectCollaboratorService,
 		workingHoursSettingsService:  workingHoursSettingsService,
+		projectGithubPersonService:   projectGithubPersonService,
 	}
 }
 
@@ -1559,10 +1561,24 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 		return
 	}
 
-	// Get GitHub people
-	people, err := h.githubPersonRepo.GetByProjectID(projectID)
+	// Get GitHub people including deleted ones
+	projectGithubPeople, err := h.projectGithubPersonService.GetProjectGithubPeopleByProjectIDIncludingDeleted(projectID)
 	if err != nil {
-		people = []*models.GithubPerson{}
+		projectGithubPeople = []*models.ProjectGithubPerson{}
+	}
+
+	// Get GitHub people details
+	var people []*models.GithubPerson
+	var deletedPeople []*models.GithubPerson
+	for _, pgp := range projectGithubPeople {
+		person, err := h.githubPersonRepo.GetByID(pgp.GithubPersonID)
+		if err == nil && person != nil {
+			if pgp.IsDeleted {
+				deletedPeople = append(deletedPeople, person)
+			} else {
+				people = append(people, person)
+			}
+		}
 	}
 
 	// Get email associations for this project
@@ -1634,6 +1650,7 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 		"User":               session,
 		"Project":            project,
 		"People":             people,
+		"DeletedPeople":      deletedPeople,
 		"Emails":             filteredEmails,
 		"PersonEmailMap":     personEmailMap,
 		"AssociatedEmails":   associatedEmails,
@@ -3393,4 +3410,68 @@ func (h *ProjectHandler) ViewRepository(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "repository_view", data)
+}
+
+// SoftDeletePerson soft deletes a person from a project
+func (h *ProjectHandler) SoftDeletePerson(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	projectID := c.Param("id")
+	githubPersonID := c.PostForm("github_person_id")
+
+	if projectID == "" || githubPersonID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID and GitHub Person ID are required"})
+		return
+	}
+
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to modify this project"})
+		return
+	}
+
+	err = h.projectGithubPersonService.SoftDeleteByProjectAndGithubPerson(projectID, githubPersonID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove person: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Person removed successfully"})
+}
+
+// RestorePerson restores a soft-deleted person in a project
+func (h *ProjectHandler) RestorePerson(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	projectID := c.Param("id")
+	githubPersonID := c.PostForm("github_person_id")
+
+	if projectID == "" || githubPersonID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID and GitHub Person ID are required"})
+		return
+	}
+
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to modify this project"})
+		return
+	}
+
+	err = h.projectGithubPersonService.RestoreByProjectAndGithubPerson(projectID, githubPersonID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restore person: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Person restored successfully"})
 }

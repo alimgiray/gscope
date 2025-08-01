@@ -12,6 +12,7 @@ type ProjectGithubPerson struct {
 	ProjectID      string    `json:"project_id"`
 	GithubPersonID string    `json:"github_person_id"`
 	SourceType     string    `json:"source_type"` // "pull_request", "contributor", "commit_author"
+	IsDeleted      bool      `json:"is_deleted"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
