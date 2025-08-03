@@ -2101,7 +2101,7 @@ func (h *ProjectHandler) CreateEmailMerge(c *gin.Context) {
 		return
 	}
 
-	// Validate project ownership
+	// Validate project access (owner or collaborator)
 	project, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -2112,7 +2112,26 @@ func (h *ProjectHandler) CreateEmailMerge(c *gin.Context) {
 	}
 
 	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	// Check if user is owner or collaborator
+	isOwner := project.OwnerID == userID
+	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to check project access",
+		})
+		return
+	}
+
+	if !isOwner && !isCollaborator {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": "Access denied",
@@ -2188,7 +2207,7 @@ func (h *ProjectHandler) DetachEmailMerge(c *gin.Context) {
 		return
 	}
 
-	// Validate project ownership
+	// Validate project access (owner or collaborator)
 	project, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -2199,7 +2218,26 @@ func (h *ProjectHandler) DetachEmailMerge(c *gin.Context) {
 	}
 
 	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	// Check if user is owner or collaborator
+	isOwner := project.OwnerID == userID
+	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to check project access",
+		})
+		return
+	}
+
+	if !isOwner && !isCollaborator {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": "Access denied",
@@ -2246,7 +2284,7 @@ func (h *ProjectHandler) CreateGitHubPersonEmailAssociation(c *gin.Context) {
 		return
 	}
 
-	// Validate project ownership
+	// Validate project access (owner or collaborator)
 	project, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -2257,7 +2295,26 @@ func (h *ProjectHandler) CreateGitHubPersonEmailAssociation(c *gin.Context) {
 	}
 
 	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	// Check if user is owner or collaborator
+	isOwner := project.OwnerID == userID
+	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to check project access",
+		})
+		return
+	}
+
+	if !isOwner && !isCollaborator {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": "Access denied",
@@ -2313,7 +2370,7 @@ func (h *ProjectHandler) DeleteGitHubPersonEmailAssociation(c *gin.Context) {
 		return
 	}
 
-	// Validate project ownership
+	// Validate project access (owner or collaborator)
 	project, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -2324,7 +2381,26 @@ func (h *ProjectHandler) DeleteGitHubPersonEmailAssociation(c *gin.Context) {
 	}
 
 	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Invalid user session",
+		})
+		return
+	}
+
+	// Check if user is owner or collaborator
+	isOwner := project.OwnerID == userID
+	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to check project access",
+		})
+		return
+	}
+
+	if !isOwner && !isCollaborator {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": "Access denied",
