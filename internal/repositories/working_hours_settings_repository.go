@@ -104,7 +104,7 @@ func (r *WorkingHoursSettingsRepository) CreateOrUpdate(settings *models.Working
 	if err != nil {
 		return err
 	}
-	
+
 	if existing == nil {
 		// Create new settings
 		if settings.ID == "" {

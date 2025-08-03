@@ -177,7 +177,7 @@ func (r *ProjectGithubPersonRepository) Upsert(projectGithubPerson *models.Proje
 	query := `
 		INSERT INTO project_github_people (id, project_id, github_person_id, source_type, is_deleted, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(project_id, github_person_id) DO UPDATE SET
+		ON CONFLICT(project_id, github_person_id, is_deleted) DO UPDATE SET
 			source_type = excluded.source_type,
 			updated_at = excluded.updated_at
 	`
