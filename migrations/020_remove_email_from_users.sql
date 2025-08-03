@@ -3,7 +3,10 @@
 -- Description: Remove email field from users table as we're transitioning to username-based authentication
 
 -- SQLite doesn't support dropping UNIQUE columns directly, so we need to recreate the table
--- First, create a temporary table with the new schema
+-- First, disable foreign key constraints temporarily
+PRAGMA foreign_keys = OFF;
+
+-- Create a temporary table with the new schema
 CREATE TABLE users_new (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -23,4 +26,7 @@ FROM users;
 DROP TABLE users;
 
 -- Rename the new table to the original name
-ALTER TABLE users_new RENAME TO users; 
+ALTER TABLE users_new RENAME TO users;
+
+-- Re-enable foreign key constraints
+PRAGMA foreign_keys = ON; 
