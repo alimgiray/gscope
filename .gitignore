@@ -41,3 +41,4 @@ gscope.db-wal
 clones/
 
 main
+.DS_Store
