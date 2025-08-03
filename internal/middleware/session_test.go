@@ -33,7 +33,6 @@ func TestSessionExtension(t *testing.T) {
 	sessionData := SessionData{
 		UserID:    "test-user",
 		Username:  "testuser",
-		Email:     "test@example.com",
 		ExpiresAt: time.Now().Add(1 * time.Hour), // 1 hour from now
 	}
 
@@ -97,7 +96,6 @@ func TestSessionExtension(t *testing.T) {
 		// Verify session data
 		assert.Equal(t, sessionData.UserID, extendedSession.UserID)
 		assert.Equal(t, sessionData.Username, extendedSession.Username)
-		assert.Equal(t, sessionData.Email, extendedSession.Email)
 
 		// Verify that expiry time was extended (should be around 24 hours from now)
 		expectedMinExpiry := time.Now().Add(23 * time.Hour) // Allow 1 hour tolerance
@@ -123,7 +121,6 @@ func TestSessionExtensionOnError(t *testing.T) {
 	sessionData := SessionData{
 		UserID:    "test-user",
 		Username:  "testuser",
-		Email:     "test@example.com",
 		ExpiresAt: time.Now().Add(1 * time.Hour),
 	}
 

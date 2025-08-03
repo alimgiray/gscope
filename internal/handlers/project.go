@@ -425,13 +425,13 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		return
 	}
 
-	// Check if the user is the owner (only owners can access settings)
+	// Check if the user has access to the project (owners and collaborators can access settings)
 	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
-	if err != nil || accessType != "owner" {
+	if err != nil || (accessType != "owner" && accessType != "collaborator") {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
-			"Error": "Only project owners can access project settings.",
+			"Error": "Only project owners and collaborators can access project settings.",
 		})
 		return
 	}
@@ -1023,8 +1023,8 @@ func (h *ProjectHandler) CreateCloneJob(c *gin.Context) {
 		return
 	}
 
-	// Check if user owns the project
-	project, err := h.projectService.GetProjectByID(projectID)
+	// Check if project exists
+	_, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.HTML(http.StatusNotFound, "error", gin.H{
 			"Title": "Error",
@@ -1034,21 +1034,13 @@ func (h *ProjectHandler) CreateCloneJob(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil {
-		c.HTML(http.StatusInternalServerError, "error", gin.H{
-			"Title": "Error",
-			"User":  session,
-			"Error": "Invalid user session",
-		})
-		return
-	}
-
-	if project.OwnerID != userID {
+	// Check if user has access to the project (owners and collaborators can create jobs)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || (accessType != "owner" && accessType != "collaborator") {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Error",
 			"User":  session,
-			"Error": "Access denied",
+			"Error": "Access denied. Only project owners and collaborators can create jobs.",
 		})
 		return
 	}
@@ -1107,8 +1099,8 @@ func (h *ProjectHandler) CreateFetchGithubJob(c *gin.Context) {
 		return
 	}
 
-	// Check if user owns the project
-	project, err := h.projectService.GetProjectByID(projectID)
+	// Check if project exists
+	_, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -1117,19 +1109,12 @@ func (h *ProjectHandler) CreateFetchGithubJob(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Invalid user session",
-		})
-		return
-	}
-
-	if project.OwnerID != userID {
+	// Check if user has access to the project (owners and collaborators can create jobs)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || (accessType != "owner" && accessType != "collaborator") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "Access denied",
+			"message": "Access denied. Only project owners and collaborators can create jobs.",
 		})
 		return
 	}
@@ -1182,8 +1167,8 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 		}
 	}
 
-	// Check if user owns the project
-	project, err := h.projectService.GetProjectByID(projectID)
+	// Check if project exists
+	_, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -1192,19 +1177,12 @@ func (h *ProjectHandler) CreateAnalyzeJobs(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Invalid user session",
-		})
-		return
-	}
-
-	if project.OwnerID != userID {
+	// Check if user has access to the project (owners and collaborators can create jobs)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || (accessType != "owner" && accessType != "collaborator") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "Access denied",
+			"message": "Access denied. Only project owners and collaborators can create jobs.",
 		})
 		return
 	}

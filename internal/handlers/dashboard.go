@@ -8,7 +8,6 @@ import (
 	"github.com/alimgiray/gscope/internal/models"
 	"github.com/alimgiray/gscope/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type DashboardHandler struct {
@@ -32,14 +31,9 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 	// Get user data from service
 	user, err := h.userService.GetUserByID(session.UserID)
 	if err != nil {
-		// For now, use session data if user not found in database
-		user = &models.User{
-			ID:        uuid.MustParse(session.UserID),
-			Name:      session.Username, // Using username as name for now
-			Username:  session.Username,
-			Email:     session.Email,
-			CreatedAt: session.ExpiresAt, // Using session expiry as created date for now
-		}
+		// If user not found in database, redirect to login
+		c.Redirect(http.StatusFound, "/login")
+		return
 	}
 
 	// Get user's accessible projects (owned + collaborated)

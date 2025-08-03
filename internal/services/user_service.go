@@ -25,11 +25,6 @@ func (s *UserService) GetUserByID(id string) (*models.User, error) {
 	return s.userRepo.GetByID(id)
 }
 
-// GetUserByEmail retrieves a user by email
-func (s *UserService) GetUserByEmail(email string) (*models.User, error) {
-	return s.userRepo.GetByEmail(email)
-}
-
 // GetUserByUsername retrieves a user by username
 func (s *UserService) GetUserByUsername(username string) (*models.User, error) {
 	return s.userRepo.GetByUsername(username)

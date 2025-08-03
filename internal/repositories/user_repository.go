@@ -20,15 +20,14 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 // Create creates a new user
 func (r *UserRepository) Create(user *models.User) error {
 	query := `
-		INSERT INTO users (id, name, username, email, profile_picture, access_token, github_access_token, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (id, name, username, profile_picture, access_token, github_access_token, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := r.db.Exec(query,
 		user.ID.String(),
 		user.Name,
 		user.Username,
-		user.Email,
 		user.ProfilePicture,
 		user.AccessToken,
 		user.GitHubAccessToken,
@@ -39,7 +38,7 @@ func (r *UserRepository) Create(user *models.User) error {
 
 // GetByID retrieves a user by ID
 func (r *UserRepository) GetByID(id string) (*models.User, error) {
-	query := `SELECT id, name, username, email, profile_picture, access_token, github_access_token, created_at FROM users WHERE id = ?`
+	query := `SELECT id, name, username, profile_picture, access_token, github_access_token, created_at FROM users WHERE id = ?`
 
 	var user models.User
 	var userID string
@@ -47,35 +46,6 @@ func (r *UserRepository) GetByID(id string) (*models.User, error) {
 		&userID,
 		&user.Name,
 		&user.Username,
-		&user.Email,
-		&user.ProfilePicture,
-		&user.AccessToken,
-		&user.GitHubAccessToken,
-		&user.CreatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	user.ID, err = uuid.Parse(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
-}
-
-// GetByEmail retrieves a user by email
-func (r *UserRepository) GetByEmail(email string) (*models.User, error) {
-	query := `SELECT id, name, username, email, profile_picture, access_token, github_access_token, created_at FROM users WHERE email = ?`
-
-	var user models.User
-	var userID string
-	err := r.db.QueryRow(query, email).Scan(
-		&userID,
-		&user.Name,
-		&user.Username,
-		&user.Email,
 		&user.ProfilePicture,
 		&user.AccessToken,
 		&user.GitHubAccessToken,
@@ -95,7 +65,7 @@ func (r *UserRepository) GetByEmail(email string) (*models.User, error) {
 
 // GetByUsername retrieves a user by username
 func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
-	query := `SELECT id, name, username, email, profile_picture, access_token, github_access_token, created_at FROM users WHERE username = ?`
+	query := `SELECT id, name, username, profile_picture, access_token, github_access_token, created_at FROM users WHERE username = ?`
 
 	var user models.User
 	var userID string
@@ -103,7 +73,6 @@ func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
 		&userID,
 		&user.Name,
 		&user.Username,
-		&user.Email,
 		&user.ProfilePicture,
 		&user.AccessToken,
 		&user.GitHubAccessToken,
@@ -123,21 +92,15 @@ func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
 
 // Update updates a user
 func (r *UserRepository) Update(user *models.User) error {
-	email := user.Email
-	if email == "" {
-		email = user.Username + "@github.com" // Fallback email
-	}
-
 	query := `
 		UPDATE users 
-		SET name = ?, username = ?, email = ?, profile_picture = ?, access_token = ?, github_access_token = ?
+		SET name = ?, username = ?, profile_picture = ?, access_token = ?, github_access_token = ?
 		WHERE id = ?
 	`
 
 	_, err := r.db.Exec(query,
 		user.Name,
 		user.Username,
-		email,
 		user.ProfilePicture,
 		user.AccessToken,
 		user.GitHubAccessToken,

@@ -84,17 +84,10 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 	log.Printf("GitHub callback - Username: %s, User found: %v, Error: %v", githubUser.Login, user != nil, err)
 	if err != nil || user == nil {
 		// User doesn't exist, create new user
-		// Handle case where GitHub doesn't return email
-		email := githubUser.Email
-		if email == "" {
-			email = githubUser.Login + "@github.com" // Fallback email
-		}
-
 		user = &models.User{
 			ID:                uuid.New(),
 			Name:              githubUser.Name,
 			Username:          githubUser.Login,
-			Email:             email,
 			ProfilePicture:    githubUser.AvatarURL,
 			GitHubAccessToken: token.AccessToken,
 			CreatedAt:         time.Now(),
@@ -121,7 +114,7 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 		return
 	}
 
-	if err := middleware.SetSession(c, user.ID.String(), user.Username, user.Email); err != nil {
+	if err := middleware.SetSession(c, user.ID.String(), user.Username); err != nil {
 		c.Redirect(http.StatusFound, "/login?error=session_creation_failed")
 		return
 	}

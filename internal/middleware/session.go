@@ -15,7 +15,6 @@ import (
 type SessionData struct {
 	UserID    string    `json:"user_id"`
 	Username  string    `json:"username"`
-	Email     string    `json:"email"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -99,11 +98,10 @@ func extendSession(c *gin.Context, sessionData *SessionData) {
 }
 
 // SetSession creates a new session cookie
-func SetSession(c *gin.Context, userID, username, email string) error {
+func SetSession(c *gin.Context, userID, username string) error {
 	sessionData := SessionData{
 		UserID:    userID,
 		Username:  username,
-		Email:     email,
 		ExpiresAt: time.Now().Add(24 * time.Hour), // 24 hour expiry
 	}
 
