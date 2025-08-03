@@ -79,8 +79,8 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 	}
 
 	// Check if user exists in our database
-	user, err := h.userService.GetUserByEmail(githubUser.Email)
-	log.Printf("GitHub callback - Email: %s, User found: %v, Error: %v", githubUser.Email, user != nil, err)
+	user, err := h.userService.GetUserByUsername(githubUser.Login)
+	log.Printf("GitHub callback - Username: %s, User found: %v, Error: %v", githubUser.Login, user != nil, err)
 	if err != nil || user == nil {
 		// User doesn't exist, create new user
 		user = &models.User{
