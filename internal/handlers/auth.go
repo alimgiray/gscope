@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/alimgiray/gscope/internal/middleware"
 	"github.com/alimgiray/gscope/internal/models"
@@ -83,16 +84,24 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 	log.Printf("GitHub callback - Username: %s, User found: %v, Error: %v", githubUser.Login, user != nil, err)
 	if err != nil || user == nil {
 		// User doesn't exist, create new user
+		// Handle case where GitHub doesn't return email
+		email := githubUser.Email
+		if email == "" {
+			email = githubUser.Login + "@github.com" // Fallback email
+		}
+
 		user = &models.User{
 			ID:                uuid.New(),
 			Name:              githubUser.Name,
 			Username:          githubUser.Login,
-			Email:             githubUser.Email,
+			Email:             email,
 			ProfilePicture:    githubUser.AvatarURL,
 			GitHubAccessToken: token.AccessToken,
+			CreatedAt:         time.Now(),
 		}
 
 		if err := h.userService.CreateUser(user); err != nil {
+			log.Printf("Failed to create user: %v", err)
 			c.Redirect(http.StatusFound, "/login?error=user_creation_failed")
 			return
 		}
@@ -100,6 +109,7 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 		// Update existing user's GitHub token
 		user.GitHubAccessToken = token.AccessToken
 		if err := h.userService.UpdateUser(user); err != nil {
+			log.Printf("Failed to update user: %v", err)
 			c.Redirect(http.StatusFound, "/login?error=user_update_failed")
 			return
 		}

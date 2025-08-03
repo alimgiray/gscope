@@ -123,6 +123,11 @@ func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
 
 // Update updates a user
 func (r *UserRepository) Update(user *models.User) error {
+	email := user.Email
+	if email == "" {
+		email = user.Username + "@github.com" // Fallback email
+	}
+
 	query := `
 		UPDATE users 
 		SET name = ?, username = ?, email = ?, profile_picture = ?, access_token = ?, github_access_token = ?
@@ -132,7 +137,7 @@ func (r *UserRepository) Update(user *models.User) error {
 	_, err := r.db.Exec(query,
 		user.Name,
 		user.Username,
-		user.Email,
+		email,
 		user.ProfilePicture,
 		user.AccessToken,
 		user.GitHubAccessToken,
