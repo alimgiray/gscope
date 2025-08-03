@@ -325,13 +325,11 @@
             <div class="space-y-1 text-xs text-gray-400">
               {{if .GitHubRepo.IsCloned}}
               <p>
-                Last cloned: {{.GitHubRepo.LastCloned.Format "2006-01-02
-                15:04:05"}}
+                Last cloned: {{.GitHubRepo.LastCloned.Format "2006-01-02 15:04:05"}}
               </p>
               {{end}} {{if .ProjectRepo.LastFetched}}
               <p>
-                Last fetched: {{.ProjectRepo.LastFetched.Format "2006-01-02
-                15:04:05"}}
+                Last fetched: {{.ProjectRepo.LastFetched.Format "2006-01-02 15:04:05"}}
               </p>
               {{else}}
               <p>Last fetched: never fetched</p>
