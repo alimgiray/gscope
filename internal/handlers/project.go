@@ -948,7 +948,7 @@ func (h *ProjectHandler) ToggleRepositoryTracking(c *gin.Context) {
 	projectID := c.Param("id")
 	repositoryID := c.Param("repository_id")
 
-	// Validate project ownership
+	// Validate project access (owner or collaborator)
 	project, err := h.projectService.GetProjectByID(projectID)
 	if err != nil {
 		c.HTML(http.StatusNotFound, "error", gin.H{
@@ -960,11 +960,32 @@ func (h *ProjectHandler) ToggleRepositoryTracking(c *gin.Context) {
 	}
 
 	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Invalid user session.",
+		})
+		return
+	}
+
+	// Check if user is owner or collaborator
+	isOwner := project.OwnerID == userID
+	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error", gin.H{
+			"Title": "Error",
+			"User":  session,
+			"Error": "Failed to check project access.",
+		})
+		return
+	}
+
+	if !isOwner && !isCollaborator {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
-			"Error": "You don't have permission to modify this project.",
+			"Error": "You don't have permission to access this project.",
 		})
 		return
 	}
