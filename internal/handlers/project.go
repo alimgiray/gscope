@@ -1763,9 +1763,9 @@ func (h *ProjectHandler) ViewProjectReportsDaily(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -1841,9 +1841,9 @@ func (h *ProjectHandler) ViewProjectReportsWeekly(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -1953,9 +1953,9 @@ func (h *ProjectHandler) ViewProjectReportsMonthly(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
@@ -2032,9 +2032,9 @@ func (h *ProjectHandler) ViewProjectReportsYearly(c *gin.Context) {
 		return
 	}
 
-	// Check if the project belongs to the current owner
-	userID, err := uuid.Parse(session.UserID)
-	if err != nil || project.OwnerID != userID {
+	// Check if the user has access to this project (owner or collaborator)
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
 		c.HTML(http.StatusForbidden, "error", gin.H{
 			"Title": "Access Denied",
 			"User":  session,
