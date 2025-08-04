@@ -1,171 +1,203 @@
-{{define "project_emails"}}
-{{template "header" .}}
+{{define "project_emails"}} {{template "header" .}}
 
 <div class="card">
-    <div class="flex justify-between items-center">
-        <div class="card-header">Emails - {{.Project.Name}}</div>
-        <a href="/projects/{{.Project.ID}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
-    </div>
-    <div class="text-xs text-gray-400 mt-2">
-        All emails from commits in this project. Merge duplicate emails to get accurate statistics.
-    </div>
+  <div class="flex justify-between items-center">
+    <div class="card-header">Emails - {{.Project.Name}}</div>
+    <a
+      href="/projects/{{.Project.ID}}"
+      class="text-green-400 hover:text-green-300 text-xs"
+      >← Back to Project</a
+    >
+  </div>
+  <div class="text-xs text-gray-400 mt-2">
+    All emails from commits in this project. Merge duplicate emails to get
+    accurate statistics.
+  </div>
 </div>
 
 <!-- Emails Section -->
 <div class="card mt-4">
-    <div class="card-header">Emails</div>
-    <div class="card-body">
-        {{if .Emails}}
-            <div class="space-y-4">
-                {{range .Emails}}
-                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50 {{if .IsMerged}}bg-gray-700{{end}}">
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="text-sm font-mono font-semibold text-white">{{.Email}}</span>
-                                {{if .Name}}
-                                    <span class="text-xs text-gray-300">({{.Name}})</span>
-                                {{end}}
-                            </div>
-
-                            <div class="space-y-1 text-xs text-gray-400">
-                                {{if .FirstCommit}}
-                                    <p>First commit: {{.FirstCommit.Format "2006-01-02 15:04:05"}}</p>
-                                {{end}}
-                                {{if .LastCommit}}
-                                    <p>Last commit: {{.LastCommit.Format "2006-01-02 15:04:05"}}</p>
-                                {{end}}
-                            </div>
-
-                            {{if .MergedEmails}}
-                            <div class="mt-3 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-600 rounded">
-                                <div class="text-yellow-400 font-semibold mb-2 text-sm">Merged emails:</div>
-                                {{$currentEmail := .Email}}
-                                {{range .MergedEmails}}
-                                    <div class="flex items-center justify-between gap-2 mb-2">
-                                        <span class="font-mono text-xs text-yellow-300">{{.}}</span>
-                                        <button 
-                                            class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                            title="Detach {{.}} from {{$currentEmail}}"
-                                            data-project-id="{{$.Project.ID}}"
-                                            data-target-email="{{$currentEmail}}"
-                                            data-source-email="{{.}}"
-                                            onclick="detachEmailFromButton(this)">
-                                            Detach
-                                        </button>
-                                    </div>
-                                {{end}}
-                            </div>
-                            {{end}}
-                        </div>
-                        <div class="flex flex-col gap-2 ml-4">
-                            <select class="text-xs bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white" onchange="updateMergeTarget('{{.Email}}', this.value)">
-                                <option value="">Select email to merge...</option>
-                                {{$sortedEmails := index $.EmailSortedEmails .Email}}
-                                {{range $sortedEmails}}
-                                    {{if not (index $.AssociatedEmails .)}}
-                                        <option value="{{.}}">{{.}}</option>
-                                    {{end}}
-                                {{end}}
-                            </select>
-                            <button onclick="mergeEmail('{{$.Project.ID}}', '{{.Email}}')" 
-                                    class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                    disabled id="merge-btn-{{.Email}}">
-                                Merge Here
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                {{end}}
+  <div class="card-header">Emails</div>
+  <div class="card-body">
+    {{if .Emails}}
+    <div class="space-y-4">
+      {{range .Emails}}
+      <div
+        class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50 {{if .IsMerged}}bg-gray-700{{end}}"
+      >
+        <div class="flex justify-between items-start">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-sm font-mono font-semibold text-white"
+                >{{.Email}}</span
+              >
+              {{if .Name}}
+              <span class="text-xs text-gray-300">({{.Name}})</span>
+              {{end}}
             </div>
-        {{else}}
-            <p class="text-xs text-gray-400">No emails found. Clone repositories and analyze commits to see emails.</p>
-        {{end}}
+
+            <div class="space-y-1 text-xs text-gray-400">
+              {{if .FirstCommit}}
+              <p>First commit: {{.FirstCommit.Format "2006-01-02 15:04:05"}}</p>
+              {{end}} {{if .LastCommit}}
+              <p>Last commit: {{.LastCommit.Format "2006-01-02 15:04:05"}}</p>
+              {{end}}
+            </div>
+
+            {{if .MergedEmails}}
+            <div
+              class="mt-3 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-600 rounded"
+            >
+              <div class="text-yellow-400 font-semibold mb-2 text-sm">
+                Merged emails:
+              </div>
+              {{$currentEmail := .Email}} {{range .MergedEmails}}
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="font-mono text-xs text-yellow-300">{{.}}</span>
+                {{if eq $.AccessType "owner"}}
+                <button
+                  class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200"
+                  title="Detach {{.}} from {{$currentEmail}}"
+                  data-project-id="{{$.Project.ID}}"
+                  data-target-email="{{$currentEmail}}"
+                  data-source-email="{{.}}"
+                  onclick="detachEmailFromButton(this)"
+                >
+                  Detach
+                </button>
+                {{else}}
+                <span class="text-xs text-gray-500 px-3 py-1 rounded"
+                  >Merged</span
+                >
+                {{end}}
+              </div>
+              {{end}}
+            </div>
+            {{end}}
+          </div>
+          {{if eq $.AccessType "owner"}}
+          <div class="flex flex-col gap-2 ml-4">
+            <select
+              class="text-xs bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white"
+              onchange="updateMergeTarget('{{.Email}}', this.value)"
+            >
+              <option value="">Select email to merge...</option>
+              {{$sortedEmails := index $.EmailSortedEmails .Email}} {{range
+              $sortedEmails}} {{if not (index $.AssociatedEmails .)}}
+              <option value="{{.}}">{{.}}</option>
+              {{end}} {{end}}
+            </select>
+            <button
+              onclick="mergeEmail('{{$.Project.ID}}', '{{.Email}}')"
+              class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200"
+              disabled
+              id="merge-btn-{{.Email}}"
+            >
+              Merge Here
+            </button>
+          </div>
+          {{else}}
+          <div class="ml-4">
+            <span class="text-xs text-gray-500">Read-only access</span>
+          </div>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
     </div>
+    {{else}}
+    <p class="text-xs text-gray-400">
+      No emails found. Clone repositories and analyze commits to see emails.
+    </p>
+    {{end}}
+  </div>
 </div>
 
 <script>
-let mergeTargets = {};
+  let mergeTargets = {};
 
-function updateMergeTarget(sourceEmail, targetEmail) {
+  function updateMergeTarget(sourceEmail, targetEmail) {
     mergeTargets[sourceEmail] = targetEmail;
-    const mergeBtn = document.getElementById('merge-btn-' + sourceEmail);
+    const mergeBtn = document.getElementById("merge-btn-" + sourceEmail);
     if (mergeBtn) {
-        mergeBtn.disabled = !targetEmail;
+      mergeBtn.disabled = !targetEmail;
     }
-}
+  }
 
-function mergeEmail(projectId, sourceEmail) {
+  function mergeEmail(projectId, sourceEmail) {
     const targetEmail = mergeTargets[sourceEmail];
     if (!targetEmail) {
-        alert('Please select a target email first');
-        return;
+      alert("Please select a target email first");
+      return;
     }
 
     const formData = new FormData();
-    formData.append('source_email', sourceEmail);
-    formData.append('target_email', targetEmail);
+    formData.append("source_email", sourceEmail);
+    formData.append("target_email", targetEmail);
 
     fetch(`/projects/${projectId}/emails/merge`, {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.success) {
-            // Reload the page to show updated statistics
-            window.location.reload();
+          // Reload the page to show updated statistics
+          window.location.reload();
         } else {
-            alert('Error: ' + data.message);
+          alert("Error: " + data.message);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to merge email');
-    });
-}
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to merge email");
+      });
+  }
 
-function detachEmailFromButton(button) {
-    const projectId = button.getAttribute('data-project-id');
-    const targetEmail = button.getAttribute('data-target-email');
-    const sourceEmail = button.getAttribute('data-source-email');
-    
-    console.log('Detach called with:', { projectId, targetEmail, sourceEmail });
-    
+  function detachEmailFromButton(button) {
+    const projectId = button.getAttribute("data-project-id");
+    const targetEmail = button.getAttribute("data-target-email");
+    const sourceEmail = button.getAttribute("data-source-email");
+
+    console.log("Detach called with:", { projectId, targetEmail, sourceEmail });
+
     if (!projectId || !targetEmail || !sourceEmail) {
-        alert('Missing required parameters for detach');
-        return;
+      alert("Missing required parameters for detach");
+      return;
     }
-    
-    if (!confirm(`Are you sure you want to detach ${sourceEmail} from ${targetEmail}?`)) {
-        return;
+
+    if (
+      !confirm(
+        `Are you sure you want to detach ${sourceEmail} from ${targetEmail}?`
+      )
+    ) {
+      return;
     }
 
     fetch(`/projects/${projectId}/emails/detach`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            target_email: targetEmail,
-            source_email: sourceEmail
-        })
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        target_email: targetEmail,
+        source_email: sourceEmail,
+      }),
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.success) {
-            // Reload the page to show updated statistics
-            window.location.reload();
+          // Reload the page to show updated statistics
+          window.location.reload();
         } else {
-            alert('Error: ' + data.message);
+          alert("Error: " + data.message);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to detach email');
-    });
-}
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to detach email");
+      });
+  }
 </script>
 
-{{template "footer" .}}
-{{end}} 
+{{template "footer" .}} {{end}}

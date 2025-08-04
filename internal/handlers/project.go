@@ -1549,6 +1549,7 @@ func (h *ProjectHandler) ViewProjectEmails(c *gin.Context) {
 		"Emails":            emails,
 		"EmailSortedEmails": emailSortedEmails,
 		"AssociatedEmails":  associatedEmails,
+		"AccessType":        accessType,
 	}
 
 	c.HTML(http.StatusOK, "project_emails", data)
@@ -1687,6 +1688,7 @@ func (h *ProjectHandler) ViewProjectPeople(c *gin.Context) {
 		"PersonEmailMap":     personEmailMap,
 		"AssociatedEmails":   associatedEmails,
 		"PersonSortedEmails": personSortedEmails,
+		"AccessType":         accessType,
 	}
 
 	c.HTML(http.StatusOK, "project_people", data)
@@ -2132,21 +2134,12 @@ func (h *ProjectHandler) CreateEmailMerge(c *gin.Context) {
 		return
 	}
 
-	// Check if user is owner or collaborator
+	// Check if user is owner (only owners can merge emails)
 	isOwner := project.OwnerID == userID
-	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to check project access",
-		})
-		return
-	}
-
-	if !isOwner && !isCollaborator {
+	if !isOwner {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "Access denied",
+			"message": "Only project owners can merge emails",
 		})
 		return
 	}
@@ -2238,21 +2231,12 @@ func (h *ProjectHandler) DetachEmailMerge(c *gin.Context) {
 		return
 	}
 
-	// Check if user is owner or collaborator
+	// Check if user is owner (only owners can detach email merges)
 	isOwner := project.OwnerID == userID
-	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to check project access",
-		})
-		return
-	}
-
-	if !isOwner && !isCollaborator {
+	if !isOwner {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "Access denied",
+			"message": "Only project owners can detach email merges",
 		})
 		return
 	}
@@ -2315,21 +2299,12 @@ func (h *ProjectHandler) CreateGitHubPersonEmailAssociation(c *gin.Context) {
 		return
 	}
 
-	// Check if user is owner or collaborator
+	// Check if user is owner (only owners can associate people with emails)
 	isOwner := project.OwnerID == userID
-	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to check project access",
-		})
-		return
-	}
-
-	if !isOwner && !isCollaborator {
+	if !isOwner {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "Access denied",
+			"message": "Only project owners can associate people with emails",
 		})
 		return
 	}
@@ -2401,21 +2376,12 @@ func (h *ProjectHandler) DeleteGitHubPersonEmailAssociation(c *gin.Context) {
 		return
 	}
 
-	// Check if user is owner or collaborator
+	// Check if user is owner (only owners can remove people associations)
 	isOwner := project.OwnerID == userID
-	isCollaborator, err := h.projectCollaboratorService.IsUserCollaborator(projectID, session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to check project access",
-		})
-		return
-	}
-
-	if !isOwner && !isCollaborator {
+	if !isOwner {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "Access denied",
+			"message": "Only project owners can remove people associations",
 		})
 		return
 	}
@@ -3567,10 +3533,10 @@ func (h *ProjectHandler) SoftDeletePerson(c *gin.Context) {
 		return
 	}
 
-	// Check if the user has access to this project (owner or collaborator)
+	// Check if the user is the project owner (only owners can remove people)
 	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
-	if err != nil || accessType == "none" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to modify this project"})
+	if err != nil || accessType != "owner" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owners can remove people"})
 		return
 	}
 
@@ -3599,10 +3565,10 @@ func (h *ProjectHandler) RestorePerson(c *gin.Context) {
 		return
 	}
 
-	// Check if the user has access to this project (owner or collaborator)
+	// Check if the user is the project owner (only owners can restore people)
 	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
-	if err != nil || accessType == "none" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to modify this project"})
+	if err != nil || accessType != "owner" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owners can restore people"})
 		return
 	}
 

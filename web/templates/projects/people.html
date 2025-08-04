@@ -1,275 +1,351 @@
-{{define "project_people"}}
-{{template "header" .}}
+{{define "project_people"}} {{template "header" .}}
 
 <div class="card">
-    <div class="flex justify-between items-center">
-        <div class="card-header">People - {{.Project.Name}}</div>
-        <a href="/projects/{{.Project.ID.String}}" class="text-green-400 hover:text-green-300 text-xs">← Back to Project</a>
-    </div>
-    <div class="text-xs text-gray-400 mt-2">
-        All GitHub people found in this project. Associate emails to connect commits with pull requests.
-    </div>
+  <div class="flex justify-between items-center">
+    <div class="card-header">People - {{.Project.Name}}</div>
+    <a
+      href="/projects/{{.Project.ID.String}}"
+      class="text-green-400 hover:text-green-300 text-xs"
+      >← Back to Project</a
+    >
+  </div>
+  <div class="text-xs text-gray-400 mt-2">
+    All GitHub people found in this project. Associate emails to connect commits
+    with pull requests.
+  </div>
 </div>
 
 <!-- Active People Section -->
 <div class="card mt-4">
-    <div class="card-header">Active GitHub People</div>
-    <div class="card-body">
-        {{if .People}}
-            <div class="space-y-4">
-                {{range .People}}
-                <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50">
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
-                                {{if .AvatarURL}}
-                                    <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-8 h-8 rounded-full">
-                                {{end}}
-                                <a href="/projects/{{$.Project.ID.String}}/people/{{.ID}}" class="text-sm font-mono font-semibold text-green-400 hover:text-green-300">{{.Username}}</a>
-                                {{if .DisplayName}}
-                                    <span class="text-xs text-gray-300">({{.DisplayName}})</span>
-                                {{end}}
-                                {{if .Type}}
-                                    <span class="text-xs bg-gray-600 text-white px-2 py-1 rounded">{{.Type}}</span>
-                                {{end}}
-                            </div>
-                            
-                            <div class="space-y-1 text-xs text-gray-400">
-                                {{if .ProfileURL}}
-                                    <p>
-                                        <a href="{{.ProfileURL}}" target="_blank" class="text-blue-400 hover:text-blue-300">View Profile</a>
-                                    </p>
-                                {{end}}
-                                <p>GitHub ID: {{.GithubUserID}}</p>
-                                <p>Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</p>
-                            </div>
-                            
-                            <!-- Email Association Section -->
-                            {{$associatedEmail := index $.PersonEmailMap .ID}}
-                            {{if $associatedEmail}}
-                                <div class="mt-3 p-3 bg-green-900 bg-opacity-20 border border-green-600 rounded">
-                                    <div class="text-green-400 font-semibold mb-2 text-sm">Associated Email:</div>
-                                    <div class="flex items-center justify-between">
-                                        <span class="font-mono text-xs text-green-300">{{$associatedEmail}}</span>
-                                        <button onclick="detachEmail('{{$.Project.ID.String}}', '{{$associatedEmail}}')" 
-                                                class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200">
-                                            Detach
-                                        </button>
-                                    </div>
-                                </div>
-                            {{else}}
-                                <div class="mt-3 p-3 bg-gray-800 bg-opacity-50 border border-gray-600 rounded">
-                                    <div class="text-gray-400 font-semibold mb-2 text-sm">No email associated</div>
-                                </div>
-                            {{end}}
-                        </div>
-                        
-                        <!-- Email Association Controls -->
-                        {{if not $associatedEmail}}
-                        <div class="flex flex-col gap-2 ml-4">
-                            <select class="text-xs bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white" onchange="updateEmailTarget('{{.ID}}', this.value)">
-                                <option value="">Select email to associate...</option>
-                                {{$sortedEmails := index $.PersonSortedEmails .ID}}
-                                {{range $sortedEmails}}
-                                    <option value="{{.}}">{{.}}</option>
-                                {{end}}
-                            </select>
-                            <button onclick="associateEmail('{{$.Project.ID.String}}', '{{.ID}}')" 
-                                    class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200" 
-                                    disabled id="associate-btn-{{.ID}}">
-                                Associate
-                            </button>
-                        </div>
-                        {{end}}
-                        
-                        <!-- Remove Button -->
-                        <div class="flex flex-col gap-2 ml-4">
-                            <button onclick="removePerson('{{$.Project.ID.String}}', '{{.ID}}')" 
-                                    class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200">
-                                Remove
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                {{end}}
+  <div class="card-header">Active GitHub People</div>
+  <div class="card-body">
+    {{if .People}}
+    <div class="space-y-4">
+      {{range .People}}
+      <div
+        class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-50"
+      >
+        <div class="flex justify-between items-start">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              {{if .AvatarURL}}
+              <img
+                src="{{.AvatarURL}}"
+                alt="{{.Username}}"
+                class="w-8 h-8 rounded-full"
+              />
+              {{end}}
+              <a
+                href="/projects/{{$.Project.ID.String}}/people/{{.ID}}"
+                class="text-sm font-mono font-semibold text-green-400 hover:text-green-300"
+                >{{.Username}}</a
+              >
+              {{if .DisplayName}}
+              <span class="text-xs text-gray-300">({{.DisplayName}})</span>
+              {{end}} {{if .Type}}
+              <span class="text-xs bg-gray-600 text-white px-2 py-1 rounded"
+                >{{.Type}}</span
+              >
+              {{end}}
             </div>
-        {{else}}
-            <p class="text-xs text-gray-400">No active people found. Analyze pull requests to discover GitHub people.</p>
-        {{end}}
+
+            <div class="space-y-1 text-xs text-gray-400">
+              {{if .ProfileURL}}
+              <p>
+                <a
+                  href="{{.ProfileURL}}"
+                  target="_blank"
+                  class="text-blue-400 hover:text-blue-300"
+                  >View Profile</a
+                >
+              </p>
+              {{end}}
+              <p>GitHub ID: {{.GithubUserID}}</p>
+              <p>Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</p>
+            </div>
+
+            <!-- Email Association Section -->
+            {{$associatedEmail := index $.PersonEmailMap .ID}} {{if
+            $associatedEmail}}
+            <div
+              class="mt-3 p-3 bg-green-900 bg-opacity-20 border border-green-600 rounded"
+            >
+              <div class="text-green-400 font-semibold mb-2 text-sm">
+                Associated Email:
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="font-mono text-xs text-green-300"
+                  >{{$associatedEmail}}</span
+                >
+                {{if eq $.AccessType "owner"}}
+                <button
+                  onclick="detachEmail('{{$.Project.ID.String}}', '{{$associatedEmail}}')"
+                  class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200"
+                >
+                  Detach
+                </button>
+                {{else}}
+                <span class="text-xs text-gray-500 px-3 py-1">Associated</span>
+                {{end}}
+              </div>
+            </div>
+            {{else}}
+            <div
+              class="mt-3 p-3 bg-gray-800 bg-opacity-50 border border-gray-600 rounded"
+            >
+              <div class="text-gray-400 font-semibold mb-2 text-sm">
+                No email associated
+              </div>
+            </div>
+            {{end}}
+          </div>
+
+          <!-- Email Association Controls -->
+          {{if and (not $associatedEmail) (eq $.AccessType "owner")}}
+          <div class="flex flex-col gap-2 ml-4">
+            <select
+              class="text-xs bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white"
+              onchange="updateEmailTarget('{{.ID}}', this.value)"
+            >
+              <option value="">Select email to associate...</option>
+              {{$sortedEmails := index $.PersonSortedEmails .ID}} {{range
+              $sortedEmails}}
+              <option value="{{.}}">{{.}}</option>
+              {{end}}
+            </select>
+            <button
+              onclick="associateEmail('{{$.Project.ID.String}}', '{{.ID}}')"
+              class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors duration-200"
+              disabled
+              id="associate-btn-{{.ID}}"
+            >
+              Associate
+            </button>
+          </div>
+          {{else if and (not $associatedEmail) (eq $.AccessType
+          "collaborator")}}
+          <div class="ml-4">
+            <span class="text-xs text-gray-500">Read-only access</span>
+          </div>
+          {{end}}
+
+          <!-- Remove Button -->
+          {{if eq $.AccessType "owner"}}
+          <div class="flex flex-col gap-2 ml-4">
+            <button
+              onclick="removePerson('{{$.Project.ID.String}}', '{{.ID}}')"
+              class="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded transition-colors duration-200"
+            >
+              Remove
+            </button>
+          </div>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
     </div>
+    {{else}}
+    <p class="text-xs text-gray-400">
+      No active people found. Analyze pull requests to discover GitHub people.
+    </p>
+    {{end}}
+  </div>
 </div>
 
 <!-- Deleted People Section -->
 {{if .DeletedPeople}}
 <div class="card mt-4">
-    <div class="card-header text-gray-400">Removed People</div>
-    <div class="card-body">
-        <div class="space-y-4">
-            {{range .DeletedPeople}}
-            <div class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-30 opacity-60">
-                <div class="flex justify-between items-start">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                            {{if .AvatarURL}}
-                                <img src="{{.AvatarURL}}" alt="{{.Username}}" class="w-8 h-8 rounded-full">
-                            {{end}}
-                            <span class="text-sm font-mono font-semibold text-gray-400">{{.Username}}</span>
-                            {{if .DisplayName}}
-                                <span class="text-xs text-gray-500">({{.DisplayName}})</span>
-                            {{end}}
-                            {{if .Type}}
-                                <span class="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">{{.Type}}</span>
-                            {{end}}
-                        </div>
-                        
-                        <div class="space-y-1 text-xs text-gray-500">
-                            {{if .ProfileURL}}
-                                <p>
-                                    <a href="{{.ProfileURL}}" target="_blank" class="text-gray-500 hover:text-gray-400">View Profile</a>
-                                </p>
-                            {{end}}
-                            <p>GitHub ID: {{.GithubUserID}}</p>
-                            <p>Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</p>
-                        </div>
-                    </div>
-                    
-                    <!-- Restore Button -->
-                    <div class="flex flex-col gap-2 ml-4">
-                        <button onclick="restorePerson('{{$.Project.ID.String}}', '{{.ID}}')" 
-                                class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200">
-                            Restore
-                        </button>
-                    </div>
-                </div>
+  <div class="card-header text-gray-400">Removed People</div>
+  <div class="card-body">
+    <div class="space-y-4">
+      {{range .DeletedPeople}}
+      <div
+        class="p-4 border border-gray-600 rounded-lg bg-gray-800 bg-opacity-30 opacity-60"
+      >
+        <div class="flex justify-between items-start">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              {{if .AvatarURL}}
+              <img
+                src="{{.AvatarURL}}"
+                alt="{{.Username}}"
+                class="w-8 h-8 rounded-full"
+              />
+              {{end}}
+              <span class="text-sm font-mono font-semibold text-gray-400"
+                >{{.Username}}</span
+              >
+              {{if .DisplayName}}
+              <span class="text-xs text-gray-500">({{.DisplayName}})</span>
+              {{end}} {{if .Type}}
+              <span class="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded"
+                >{{.Type}}</span
+              >
+              {{end}}
             </div>
-            {{end}}
+
+            <div class="space-y-1 text-xs text-gray-500">
+              {{if .ProfileURL}}
+              <p>
+                <a
+                  href="{{.ProfileURL}}"
+                  target="_blank"
+                  class="text-gray-500 hover:text-gray-400"
+                  >View Profile</a
+                >
+              </p>
+              {{end}}
+              <p>GitHub ID: {{.GithubUserID}}</p>
+              <p>Added: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</p>
+            </div>
+          </div>
+
+          <!-- Restore Button -->
+          {{if eq $.AccessType "owner"}}
+          <div class="flex flex-col gap-2 ml-4">
+            <button
+              onclick="restorePerson('{{$.Project.ID.String}}', '{{.ID}}')"
+              class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded transition-colors duration-200"
+            >
+              Restore
+            </button>
+          </div>
+          {{end}}
         </div>
+      </div>
+      {{end}}
     </div>
+  </div>
 </div>
 {{end}}
 
 <script>
-let emailTargets = {};
+  let emailTargets = {};
 
-function updateEmailTarget(githubPersonId, email) {
+  function updateEmailTarget(githubPersonId, email) {
     emailTargets[githubPersonId] = email;
-    const associateBtn = document.getElementById('associate-btn-' + githubPersonId);
+    const associateBtn = document.getElementById(
+      "associate-btn-" + githubPersonId
+    );
     if (associateBtn) {
-        associateBtn.disabled = !email;
+      associateBtn.disabled = !email;
     }
-}
+  }
 
-function associateEmail(projectId, githubPersonId) {
+  function associateEmail(projectId, githubPersonId) {
     const email = emailTargets[githubPersonId];
     if (!email) {
-        alert('Please select an email first');
-        return;
+      alert("Please select an email first");
+      return;
     }
 
     const formData = new FormData();
-    formData.append('github_person_id', githubPersonId);
-    formData.append('email', email);
+    formData.append("github_person_id", githubPersonId);
+    formData.append("email", email);
 
     fetch(`/projects/${projectId}/people/associate`, {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.success) {
-            // Reload the page to show updated associations
-            window.location.reload();
+          // Reload the page to show updated associations
+          window.location.reload();
         } else {
-            alert('Error: ' + data.message);
+          alert("Error: " + data.message);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to associate email');
-    });
-}
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to associate email");
+      });
+  }
 
-function detachEmail(projectId, email) {
+  function detachEmail(projectId, email) {
     if (!confirm(`Are you sure you want to detach ${email}?`)) {
-        return;
+      return;
     }
 
     const formData = new FormData();
-    formData.append('email', email);
+    formData.append("email", email);
 
     fetch(`/projects/${projectId}/people/detach`, {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.success) {
-            // Reload the page to show updated associations
-            window.location.reload();
+          // Reload the page to show updated associations
+          window.location.reload();
         } else {
-            alert('Error: ' + data.message);
+          alert("Error: " + data.message);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to detach email');
-    });
-}
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to detach email");
+      });
+  }
 
-function removePerson(projectId, githubPersonId) {
-    if (!confirm('Are you sure you want to remove this person? They will be moved to the removed section and can be restored later.')) {
-        return;
+  function removePerson(projectId, githubPersonId) {
+    if (
+      !confirm(
+        "Are you sure you want to remove this person? They will be moved to the removed section and can be restored later."
+      )
+    ) {
+      return;
     }
 
     const formData = new FormData();
-    formData.append('github_person_id', githubPersonId);
+    formData.append("github_person_id", githubPersonId);
 
     fetch(`/projects/${projectId}/people/remove`, {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.message) {
-            // Reload the page to show updated state
-            window.location.reload();
+          // Reload the page to show updated state
+          window.location.reload();
         } else {
-            alert('Error: ' + data.error);
+          alert("Error: " + data.error);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to remove person');
-    });
-}
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to remove person");
+      });
+  }
 
-function restorePerson(projectId, githubPersonId) {
-    if (!confirm('Are you sure you want to restore this person?')) {
-        return;
+  function restorePerson(projectId, githubPersonId) {
+    if (!confirm("Are you sure you want to restore this person?")) {
+      return;
     }
 
     const formData = new FormData();
-    formData.append('github_person_id', githubPersonId);
+    formData.append("github_person_id", githubPersonId);
 
     fetch(`/projects/${projectId}/people/restore`, {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.message) {
-            // Reload the page to show updated state
-            window.location.reload();
+          // Reload the page to show updated state
+          window.location.reload();
         } else {
-            alert('Error: ' + data.error);
+          alert("Error: " + data.error);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to restore person');
-    });
-}
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to restore person");
+      });
+  }
 </script>
 
-{{template "footer" .}}
-{{end}} 
+{{template "footer" .}} {{end}}
