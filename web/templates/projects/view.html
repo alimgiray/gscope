@@ -13,7 +13,8 @@
     <p>{{.Project.Description}}</p>
     {{end}}
     <div class="text-xs text-gray-400 mt-2">
-        Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}
+        <div>Owner: {{.Owner.Name}} (@{{.Owner.Username}})</div>
+        <div>Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}</div>
     </div>
 
     

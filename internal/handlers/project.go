@@ -376,6 +376,17 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		})
 	}
 
+	// Get owner information
+	owner, err := h.userService.GetUserByID(project.OwnerID.String())
+	if err != nil {
+		// If we can't get owner info, create a fallback
+		owner = &models.User{
+			ID:       project.OwnerID,
+			Username: "Unknown",
+			Name:     "Unknown User",
+		}
+	}
+
 	// Get message from query parameter
 	message := c.Query("message")
 
@@ -383,6 +394,7 @@ func (h *ProjectHandler) ViewProject(c *gin.Context) {
 		"Title":        project.Name,
 		"User":         session,
 		"Project":      project,
+		"Owner":        owner,
 		"Repositories": repositories,
 		"Message":      message,
 	}
