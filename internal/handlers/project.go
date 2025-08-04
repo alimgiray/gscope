@@ -2641,30 +2641,61 @@ func (h *ProjectHandler) UpdateAllRepositories(c *gin.Context) {
 		return
 	}
 
-	// Get all tracked repositories for this project
+	// Get all repositories for this project
 	repositories, err := h.githubRepoService.GetProjectRepositories(projectID)
 	if err != nil {
 		c.HTML(http.StatusInternalServerError, "error", gin.H{
 			"Title": "Error",
 			"User":  session,
-			"Error": "Failed to get tracked repositories: " + err.Error(),
+			"Error": "Failed to get repositories: " + err.Error(),
 		})
 		return
 	}
 
-	// Filter to only tracked repositories
+	// Check if there are any repositories at all
+	if len(repositories) == 0 {
+		c.HTML(http.StatusBadRequest, "error", gin.H{
+			"Title": "No Repositories Found",
+			"User":  session,
+			"Error": "No repositories found in this project. Please fetch repositories from GitHub first.",
+		})
+		return
+	}
+
+	// Filter to find tracked and untracked repositories
 	var trackedRepos []*models.ProjectRepository
+	var untrackedRepos []*models.ProjectRepository
 	for _, repo := range repositories {
 		if repo.IsTracked {
 			trackedRepos = append(trackedRepos, repo)
+		} else {
+			untrackedRepos = append(untrackedRepos, repo)
 		}
 	}
 
+	// If no repositories are tracked, automatically track all repositories
+	if len(trackedRepos) == 0 && len(untrackedRepos) > 0 {
+		log.Printf("No tracked repositories found. Auto-tracking all %d repositories for project %s", len(untrackedRepos), projectID)
+
+		// Track all repositories
+		for _, repo := range untrackedRepos {
+			repo.IsTracked = true
+			if err := h.githubRepoService.UpdateProjectRepository(repo); err != nil {
+				log.Printf("Failed to auto-track repository %s: %v", repo.ID, err)
+				continue // Continue with other repositories
+			}
+			trackedRepos = append(trackedRepos, repo)
+		}
+
+		log.Printf("Successfully auto-tracked %d repositories", len(trackedRepos))
+	}
+
+	// Final check - if we still have no tracked repositories, there was an error
 	if len(trackedRepos) == 0 {
 		c.HTML(http.StatusBadRequest, "error", gin.H{
-			"Title": "No Tracked Repositories",
+			"Title": "Unable to Track Repositories",
 			"User":  session,
-			"Error": "No tracked repositories found. Please track some repositories first.",
+			"Error": "Unable to track any repositories. Please check your permissions and try again.",
 		})
 		return
 	}

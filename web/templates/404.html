@@ -1,0 +1,84 @@
+{{define "404"}} {{template "header" .}}
+
+<div class="max-w-2xl mx-auto">
+  <div class="card bg-gray-900 border-red-500">
+    <div class="card-header text-red-400">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">🔍</span>
+        <span>404 - Page Not Found</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <div
+        class="bg-black border border-red-500 rounded-lg p-4 mb-4 font-mono text-sm"
+      >
+        <div class="text-red-400 mb-1">$ ls -la {{.RequestedPath}}</div>
+        <div class="text-red-300 mb-3">
+          ls: {{.RequestedPath}}: No such file or directory
+        </div>
+
+        <div class="text-green-400 mb-1">$ find /gscope -type f | head -3</div>
+        <div class="text-gray-300 text-xs space-y-1">
+          <div>→ /dashboard</div>
+          <div>→ /projects</div>
+          <div>→ /login</div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <h3 class="text-green-400 font-semibold mb-2 text-sm">
+          📂 Available Pages:
+        </h3>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="space-y-1">
+            <div>
+              <a href="/" class="text-green-400 hover:text-green-300"
+                >🏠 Home</a
+              >
+            </div>
+            <div>
+              <a href="/dashboard" class="text-green-400 hover:text-green-300"
+                >📊 Dashboard</a
+              >
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div>
+              <a href="/login" class="text-green-400 hover:text-green-300"
+                >🔐 Login</a
+              >
+            </div>
+            <div>
+              <a href="/health" class="text-green-400 hover:text-green-300"
+                >💚 Health</a
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <a
+          href="javascript:history.back()"
+          class="bg-yellow-600 hover:bg-yellow-500 text-white px-3 py-2 rounded text-xs font-medium"
+        >
+          ← Back
+        </a>
+        <a
+          href="/dashboard"
+          class="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded text-xs font-medium"
+        >
+          Dashboard
+        </a>
+        <a
+          href="/"
+          class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded text-xs font-medium"
+        >
+          Home
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{template "footer" .}} {{end}}

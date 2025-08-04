@@ -200,6 +200,7 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService)
 	workingHoursSettingsHandler := handlers.NewWorkingHoursSettingsHandler(workingHoursSettingsService)
 	healthHandler := handlers.NewHealthHandler()
+	notFoundHandler := handlers.NewNotFoundHandler()
 
 	// Home page
 	router.GET("/", homeHandler.Index)
@@ -268,6 +269,9 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 
 	// Health check endpoint
 	router.GET("/health", healthHandler.HealthCheck)
+
+	// Handle 404 errors for non-existent routes
+	router.NoRoute(notFoundHandler.NotFound)
 }
 
 func loadTemplates(router *gin.Engine) {
@@ -311,5 +315,7 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/projects/collaborators.html"),
 		filepath.Join(cwd, "web/templates/projects/person_stats.html"),
 		filepath.Join(cwd, "web/templates/projects/repository.html"),
+		filepath.Join(cwd, "web/templates/error.html"),
+		filepath.Join(cwd, "web/templates/404.html"),
 	)
 }
