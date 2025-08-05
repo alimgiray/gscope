@@ -1,6 +1,9 @@
 {{define "project_reports_monthly"}}
 {{template "header" .}}
 
+<!-- Toast Container -->
+<div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
 <div class="card">
     <div class="flex justify-between items-center">
         <div class="card-header">{{.Project.Name}} - Monthly Reports</div>
@@ -18,13 +21,18 @@
 <div class="card mt-4">
     <div class="card-header">Select Month</div>
     <div class="card-body">
-        <form method="GET" id="monthForm" class="flex gap-4 items-center">
-            <select name="month" id="monthSelect" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
-                {{range .Months}}
-                    <option value="{{.}}" {{if eq . $.SelectedMonth}}selected{{end}}>{{.}}</option>
-                {{end}}
-            </select>
-        </form>
+        <div class="flex gap-4 items-center">
+            <form method="GET" id="monthForm" class="flex gap-4 items-center">
+                <select name="month" id="monthSelect" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-green-400">
+                    {{range .Months}}
+                        <option value="{{.}}" {{if eq . $.SelectedMonth}}selected{{end}}>{{.}}</option>
+                    {{end}}
+                </select>
+            </form>
+            <button onclick="exportToExcel('{{.Project.ID}}', '{{.SelectedMonth}}')" class="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded text-xs transition-colors duration-200">
+                📊 Export to Excel
+            </button>
+        </div>
     </div>
 </div>
 
@@ -32,6 +40,95 @@
 document.getElementById('monthSelect').addEventListener('change', function() {
     document.getElementById('monthForm').submit();
 });
+
+function exportToExcel(projectId, selectedMonth) {
+    // Show loading state
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = '📊 Generating...';
+    button.disabled = true;
+    button.className = 'bg-yellow-600 text-white px-3 py-1 rounded text-xs cursor-not-allowed opacity-50';
+    
+    // Make the export request
+    fetch(`/projects/${projectId}/reports/monthly/export?month=${selectedMonth}`, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        },
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.blob();
+    })
+    .then(blob => {
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `monthly-report-${selectedMonth}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Show success message
+        showToast('Excel file downloaded successfully!', 'success');
+    })
+    .catch(error => {
+        console.error('Export error:', error);
+        showToast('Failed to export Excel file', 'error');
+    })
+    .finally(() => {
+        // Restore button state
+        button.textContent = originalText;
+        button.disabled = false;
+        button.className = 'bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded text-xs transition-colors duration-200';
+    });
+}
+
+// Toast functionality
+function showToast(message, type = 'success') {
+    // Create toast container if it doesn't exist
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'fixed top-4 right-4 z-50 space-y-2';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `p-3 rounded shadow-lg text-white text-sm max-w-sm transform transition-all duration-300 translate-x-full`;
+    
+    // Set background color based on type
+    if (type === 'success') {
+        toast.className += ' bg-green-500';
+    } else if (type === 'error') {
+        toast.className += ' bg-red-500';
+    } else if (type === 'info') {
+        toast.className += ' bg-blue-500';
+    }
+
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    // Animate in
+    setTimeout(() => {
+        toast.classList.remove('translate-x-full');
+    }, 100);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        toast.classList.add('translate-x-full');
+        setTimeout(() => {
+            if (container.contains(toast)) {
+                container.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+}
 </script>
 
 <!-- Monthly Reports Content -->

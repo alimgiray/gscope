@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"github.com/alimgiray/gscope/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/xuri/excelize/v2"
 )
 
 type ProjectHandler struct {
@@ -2090,6 +2092,525 @@ func (h *ProjectHandler) ViewProjectReportsYearly(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "project_reports_yearly", data)
+}
+
+// Statistics structure for calculations
+type StatMetric struct {
+	Mean   float64
+	Median float64
+	StdDev float64
+}
+
+type Statistics struct {
+	Score        StatMetric
+	Commits      StatMetric
+	Additions    StatMetric
+	Deletions    StatMetric
+	PullRequests StatMetric
+	Comments     StatMetric
+}
+
+// calculateStatistics calculates mean, median, and standard deviation for all metrics
+func calculateStatistics(stats []*models.GitHubPersonStats) Statistics {
+	if len(stats) == 0 {
+		return Statistics{}
+	}
+
+	// Extract values for each metric
+	scores := make([]float64, len(stats))
+	commits := make([]float64, len(stats))
+	additions := make([]float64, len(stats))
+	deletions := make([]float64, len(stats))
+	pullRequests := make([]float64, len(stats))
+	comments := make([]float64, len(stats))
+
+	for i, stat := range stats {
+		scores[i] = float64(stat.TotalScore)
+		commits[i] = float64(stat.TotalCommits)
+		additions[i] = float64(stat.TotalAdditions)
+		deletions[i] = float64(stat.TotalDeletions)
+		pullRequests[i] = float64(stat.TotalPullRequests)
+		comments[i] = float64(stat.TotalComments)
+	}
+
+	return Statistics{
+		Score:        calculateMetric(scores),
+		Commits:      calculateMetric(commits),
+		Additions:    calculateMetric(additions),
+		Deletions:    calculateMetric(deletions),
+		PullRequests: calculateMetric(pullRequests),
+		Comments:     calculateMetric(comments),
+	}
+}
+
+// calculateMetric calculates mean, median, and standard deviation for a slice of values
+func calculateMetric(values []float64) StatMetric {
+	if len(values) == 0 {
+		return StatMetric{}
+	}
+
+	// Sort for median calculation
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+
+	// Calculate mean
+	var sum float64
+	for _, v := range values {
+		sum += v
+	}
+	mean := sum / float64(len(values))
+
+	// Calculate median
+	var median float64
+	n := len(sorted)
+	if n%2 == 0 {
+		median = (sorted[n/2-1] + sorted[n/2]) / 2
+	} else {
+		median = sorted[n/2]
+	}
+
+	// Calculate standard deviation
+	var varianceSum float64
+	for _, v := range values {
+		diff := v - mean
+		varianceSum += diff * diff
+	}
+	stdDev := math.Sqrt(varianceSum / float64(len(values)))
+
+	return StatMetric{
+		Mean:   mean,
+		Median: median,
+		StdDev: stdDev,
+	}
+}
+
+// ExportMonthlyReportsToExcel exports monthly reports data to Excel format
+func (h *ProjectHandler) ExportMonthlyReportsToExcel(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	selectedMonth := c.Query("month")
+
+	if projectID == "" || selectedMonth == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID and month are required",
+		})
+		return
+	}
+
+	// Validate project access (owner or collaborator)
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Parse selected month to get year and month
+	var selectedYear, selectedMonthInt int
+	if _, err := fmt.Sscanf(selectedMonth, "%d-%d", &selectedYear, &selectedMonthInt); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid month format",
+		})
+		return
+	}
+
+	// Get monthly statistics for the selected month
+	monthlyStats, err := h.peopleStatsService.GetMonthlyStatisticsByProject(projectID, selectedYear, selectedMonthInt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get monthly statistics: " + err.Error(),
+		})
+		return
+	}
+
+	// Filter out people with zero score
+	var filteredStats []*models.GitHubPersonStats
+	for _, stat := range monthlyStats {
+		if stat.TotalScore > 0 {
+			filteredStats = append(filteredStats, stat)
+		}
+	}
+
+	// Create Excel file
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("Error closing Excel file: %v", err)
+		}
+	}()
+
+	// Set sheet name
+	sheetName := "Monthly Report"
+	f.SetSheetName("Sheet1", sheetName)
+
+	// Add headers
+	headers := []string{"Username", "Score", "Commits", "Additions", "Deletions", "Pull Requests", "Comments", "Score Comparison ", "Comments Comparison", "Code Changes Comparison"}
+	for i, header := range headers {
+		cell := fmt.Sprintf("%c1", 'A'+i)
+		f.SetCellValue(sheetName, cell, header)
+	}
+
+	// Style headers
+	headerStyle, err := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Bold: true,
+			Size: 12,
+		},
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#4CAF50"},
+			Pattern: 1,
+		},
+		Alignment: &excelize.Alignment{
+			Horizontal: "center",
+			Vertical:   "center",
+		},
+	})
+	if err == nil {
+		f.SetRowStyle(sheetName, 1, 1, headerStyle)
+	}
+
+	// Calculate statistics
+	stats := calculateStatistics(filteredStats)
+
+	// Add data rows
+	for i, stat := range filteredStats {
+		row := i + 2
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), stat.GitHubPerson.Username)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), stat.TotalScore)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), stat.TotalCommits)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), stat.TotalAdditions)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), stat.TotalDeletions)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), stat.TotalPullRequests)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), stat.TotalComments)
+
+		// Calculate score performance vs average
+		scorePerformance := 0.0
+		if stats.Score.Mean > 0 {
+			scorePerformance = (float64(stat.TotalScore) - stats.Score.Mean) / stats.Score.Mean * 100
+		}
+
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("%.1f%%", scorePerformance))
+
+		// Calculate comments performance vs average
+		commentsPerformance := 0.0
+		if stats.Comments.Mean > 0 {
+			commentsPerformance = (float64(stat.TotalComments) - stats.Comments.Mean) / stats.Comments.Mean * 100
+		}
+
+		// Calculate code changes performance vs average (additions + deletions)
+		codeChangesPerformance := 0.0
+		totalCodeChanges := stat.TotalAdditions + stat.TotalDeletions
+		avgCodeChanges := stats.Additions.Mean + stats.Deletions.Mean
+		if avgCodeChanges > 0 {
+			codeChangesPerformance = (float64(totalCodeChanges) - avgCodeChanges) / avgCodeChanges * 100
+		}
+
+		f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), fmt.Sprintf("%.1f%%", commentsPerformance))
+		f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), fmt.Sprintf("%.1f%%", codeChangesPerformance))
+	}
+
+	// Add statistics rows
+	lastDataRow := len(filteredStats) + 1
+	statsStartRow := lastDataRow + 2
+
+	// Add statistics headers
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow), "Statistics")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow+1), "Mean:")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow+2), "Median:")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow+3), "Standard Deviation:")
+
+	// Add statistics values
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", statsStartRow+1), stats.Score.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", statsStartRow+2), stats.Score.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", statsStartRow+3), stats.Score.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", statsStartRow+1), stats.Commits.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", statsStartRow+2), stats.Commits.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", statsStartRow+3), stats.Commits.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("D%d", statsStartRow+1), stats.Additions.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("D%d", statsStartRow+2), stats.Additions.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("D%d", statsStartRow+3), stats.Additions.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", statsStartRow+1), stats.Deletions.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", statsStartRow+2), stats.Deletions.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", statsStartRow+3), stats.Deletions.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", statsStartRow+1), stats.PullRequests.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", statsStartRow+2), stats.PullRequests.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", statsStartRow+3), stats.PullRequests.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", statsStartRow+1), stats.Comments.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", statsStartRow+2), stats.Comments.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", statsStartRow+3), stats.Comments.StdDev)
+
+	// Auto-fit columns
+	for i := 0; i < len(headers); i++ {
+		col := string(rune('A' + i))
+		f.SetColWidth(sheetName, col, col, 15)
+	}
+
+	// Add project info in a separate section below the data
+	infoStartRow := statsStartRow + 5
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow), "Project Information")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow+1), "Project Name:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", infoStartRow+1), project.Name)
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow+2), "Month:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", infoStartRow+2), selectedMonth)
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow+3), "Generated:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", infoStartRow+3), time.Now().Format("2006-01-02 15:04:05"))
+
+	// Set response headers
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=monthly-report-%s.xlsx", selectedMonth))
+
+	// Write Excel file to response
+	if err := f.Write(c.Writer); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to generate Excel file: " + err.Error(),
+		})
+		return
+	}
+}
+
+// ExportYearlyReportsToExcel exports yearly reports data to Excel format
+func (h *ProjectHandler) ExportYearlyReportsToExcel(c *gin.Context) {
+	session := middleware.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	projectID := c.Param("id")
+	selectedYear := c.Query("year")
+
+	if projectID == "" || selectedYear == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Project ID and year are required",
+		})
+		return
+	}
+
+	// Validate project access (owner or collaborator)
+	project, err := h.projectService.GetProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Project not found",
+		})
+		return
+	}
+
+	accessType, err := h.projectCollaboratorService.GetProjectAccessType(projectID, session.UserID)
+	if err != nil || accessType == "none" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	// Parse selected year
+	selectedYearInt, err := strconv.Atoi(selectedYear)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid year format",
+		})
+		return
+	}
+
+	// Get yearly statistics for the selected year
+	yearlyStats, err := h.peopleStatsService.GetYearlyStatisticsByProject(projectID, selectedYearInt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get yearly statistics: " + err.Error(),
+		})
+		return
+	}
+
+	// Filter out people with zero score
+	var filteredStats []*models.GitHubPersonStats
+	for _, stat := range yearlyStats {
+		if stat.TotalScore > 0 {
+			filteredStats = append(filteredStats, stat)
+		}
+	}
+
+	// Create Excel file
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("Error closing Excel file: %v", err)
+		}
+	}()
+
+	// Set sheet name
+	sheetName := "Yearly Report"
+	f.SetSheetName("Sheet1", sheetName)
+
+	// Add headers
+	headers := []string{"Username", "Score", "Commits", "Additions", "Deletions", "Pull Requests", "Comments", "Score Comparison", "Comments Comparison", "Code Changes Comparison"}
+	for i, header := range headers {
+		cell := fmt.Sprintf("%c1", 'A'+i)
+		f.SetCellValue(sheetName, cell, header)
+	}
+
+	// Style headers
+	headerStyle, err := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Bold: true,
+			Size: 12,
+		},
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#4CAF50"},
+			Pattern: 1,
+		},
+		Alignment: &excelize.Alignment{
+			Horizontal: "center",
+			Vertical:   "center",
+		},
+	})
+	if err == nil {
+		f.SetRowStyle(sheetName, 1, 1, headerStyle)
+	}
+
+	// Calculate statistics
+	stats := calculateStatistics(filteredStats)
+
+	// Add data rows
+	for i, stat := range filteredStats {
+		row := i + 2
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), stat.GitHubPerson.Username)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), stat.TotalScore)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), stat.TotalCommits)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), stat.TotalAdditions)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), stat.TotalDeletions)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), stat.TotalPullRequests)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), stat.TotalComments)
+
+		// Calculate score performance vs average
+		scorePerformance := 0.0
+		if stats.Score.Mean > 0 {
+			scorePerformance = (float64(stat.TotalScore) - stats.Score.Mean) / stats.Score.Mean * 100
+		}
+
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("%.1f%%", scorePerformance))
+
+		// Calculate comments performance vs average
+		commentsPerformance := 0.0
+		if stats.Comments.Mean > 0 {
+			commentsPerformance = (float64(stat.TotalComments) - stats.Comments.Mean) / stats.Comments.Mean * 100
+		}
+
+		// Calculate code changes performance vs average (additions + deletions)
+		codeChangesPerformance := 0.0
+		totalCodeChanges := stat.TotalAdditions + stat.TotalDeletions
+		avgCodeChanges := stats.Additions.Mean + stats.Deletions.Mean
+		if avgCodeChanges > 0 {
+			codeChangesPerformance = (float64(totalCodeChanges) - avgCodeChanges) / avgCodeChanges * 100
+		}
+
+		f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), fmt.Sprintf("%.1f%%", commentsPerformance))
+		f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), fmt.Sprintf("%.1f%%", codeChangesPerformance))
+	}
+
+	// Add statistics rows
+	lastDataRow := len(filteredStats) + 1
+	statsStartRow := lastDataRow + 2
+
+	// Add statistics headers
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow), "Statistics")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow+1), "Mean:")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow+2), "Median:")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", statsStartRow+3), "Standard Deviation:")
+
+	// Add statistics values
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", statsStartRow+1), stats.Score.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", statsStartRow+2), stats.Score.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", statsStartRow+3), stats.Score.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", statsStartRow+1), stats.Commits.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", statsStartRow+2), stats.Commits.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", statsStartRow+3), stats.Commits.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("D%d", statsStartRow+1), stats.Additions.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("D%d", statsStartRow+2), stats.Additions.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("D%d", statsStartRow+3), stats.Additions.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", statsStartRow+1), stats.Deletions.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", statsStartRow+2), stats.Deletions.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", statsStartRow+3), stats.Deletions.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", statsStartRow+1), stats.PullRequests.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", statsStartRow+2), stats.PullRequests.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", statsStartRow+3), stats.PullRequests.StdDev)
+
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", statsStartRow+1), stats.Comments.Mean)
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", statsStartRow+2), stats.Comments.Median)
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", statsStartRow+3), stats.Comments.StdDev)
+
+	// Auto-fit columns
+	for i := 0; i < len(headers); i++ {
+		col := string(rune('A' + i))
+		f.SetColWidth(sheetName, col, col, 15)
+	}
+
+	// Add project info in a separate section below the data
+	infoStartRow := statsStartRow + 5
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow), "Project Information")
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow+1), "Project Name:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", infoStartRow+1), project.Name)
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow+2), "Year:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", infoStartRow+2), selectedYear)
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", infoStartRow+3), "Generated:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", infoStartRow+3), time.Now().Format("2006-01-02 15:04:05"))
+
+	// Set response headers
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=yearly-report-%s.xlsx", selectedYear))
+
+	// Write Excel file to response
+	if err := f.Write(c.Writer); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to generate Excel file: " + err.Error(),
+		})
+		return
+	}
 }
 
 // CreateEmailMerge creates an email merge
