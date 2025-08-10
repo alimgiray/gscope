@@ -44,6 +44,7 @@ type ProjectHandler struct {
 	projectCollaboratorService   *services.ProjectCollaboratorService
 	workingHoursSettingsService  *services.WorkingHoursSettingsService
 	projectGithubPersonService   *services.ProjectGithubPersonService
+	llmAPIKeyService             *services.LLMAPIKeyService
 }
 
 func NewProjectHandler(projectService *services.ProjectService, userService *services.UserService,
@@ -53,7 +54,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 	prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository,
 	personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService,
 	githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService,
-	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService, projectGithubPersonService *services.ProjectGithubPersonService) *ProjectHandler {
+	peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService, projectGithubPersonService *services.ProjectGithubPersonService, llmAPIKeyService *services.LLMAPIKeyService) *ProjectHandler {
 	return &ProjectHandler{
 		projectService:               projectService,
 		userService:                  userService,
@@ -77,6 +78,7 @@ func NewProjectHandler(projectService *services.ProjectService, userService *ser
 		projectCollaboratorService:   projectCollaboratorService,
 		workingHoursSettingsService:  workingHoursSettingsService,
 		projectGithubPersonService:   projectGithubPersonService,
+		llmAPIKeyService:             llmAPIKeyService,
 	}
 }
 
@@ -495,6 +497,17 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		}
 	}
 
+	// Get LLM API key
+	userUUID, _ := uuid.Parse(session.UserID)
+	projectUUID, _ := uuid.Parse(projectID)
+
+	apiKey, err := h.llmAPIKeyService.GetAPIKey(projectUUID, userUUID)
+	if err != nil {
+		// Log error but don't fail the request
+		log.Printf("Error getting LLM API key: %v", err)
+		apiKey = nil
+	}
+
 	data := gin.H{
 		"Title":                "Project Settings",
 		"User":                 session,
@@ -504,6 +517,8 @@ func (h *ProjectHandler) ProjectSettings(c *gin.Context) {
 		"ExcludedFolders":      excludedFolders,
 		"UpdateSettings":       updateSettings,
 		"WorkingHoursSettings": workingHoursSettings,
+		"AccessType":           accessType,
+		"APIKey":               apiKey,
 	}
 
 	c.HTML(http.StatusOK, "project_settings", data)

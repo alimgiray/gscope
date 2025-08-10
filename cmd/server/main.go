@@ -112,6 +112,10 @@ func main() {
 	projectCollaboratorRepo := repositories.NewProjectCollaboratorRepository(database.DB)
 	projectCollaboratorService := services.NewProjectCollaboratorService(projectCollaboratorRepo, userRepo, projectRepo)
 
+	// LLM API key service
+	llmAPIKeyRepo := repositories.NewLLMAPIKeyRepository(database.DB)
+	llmAPIKeyService := services.NewLLMAPIKeyService(llmAPIKeyRepo, projectCollaboratorService)
+
 	// Scheduler service
 	schedulerService := services.NewSchedulerService(projectUpdateSettingsRepo, jobRepo, githubRepoService)
 
@@ -135,7 +139,7 @@ func main() {
 	router.Static("/static", "./web/static")
 
 	// Setup routes
-	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService)
+	setupRoutes(router, userService, projectService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService, llmAPIKeyService)
 	loadTemplates(router)
 
 	// Start workers
@@ -192,13 +196,14 @@ func main() {
 	logger.Info("Server stopped")
 }
 
-func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, pullRequestRepo *repositories.PullRequestRepository, prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService, projectGithubPersonService *services.ProjectGithubPersonService) {
+func setupRoutes(router *gin.Engine, userService *services.UserService, projectService *services.ProjectService, scoreSettingsService *services.ScoreSettingsService, excludedExtensionService *services.ExcludedExtensionService, excludedFolderService *services.ExcludedFolderService, githubRepoService *services.GitHubRepositoryService, jobService *services.JobService, jobRepo *repositories.JobRepository, commitRepo *repositories.CommitRepository, commitFileRepo *repositories.CommitFileRepository, pullRequestRepo *repositories.PullRequestRepository, prReviewRepo *repositories.PRReviewRepository, githubPersonRepo *repositories.GithubPersonRepository, personRepo *repositories.PersonRepository, emailMergeService *services.EmailMergeService, githubPersonEmailService *services.GitHubPersonEmailService, textSimilarityService *services.TextSimilarityService, peopleStatsService *services.PeopleStatisticsService, projectUpdateSettingsService *services.ProjectUpdateSettingsService, projectCollaboratorService *services.ProjectCollaboratorService, workingHoursSettingsService *services.WorkingHoursSettingsService, projectGithubPersonService *services.ProjectGithubPersonService, llmAPIKeyService *services.LLMAPIKeyService) {
 	// Initialize handlers
 	homeHandler := handlers.NewHomeHandler(userService)
 	authHandler := handlers.NewAuthHandler(userService)
 	dashboardHandler := handlers.NewDashboardHandler(userService, projectService, projectCollaboratorService)
-	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService)
+	projectHandler := handlers.NewProjectHandler(projectService, userService, scoreSettingsService, excludedExtensionService, excludedFolderService, githubRepoService, jobService, jobRepo, commitRepo, commitFileRepo, pullRequestRepo, prReviewRepo, githubPersonRepo, personRepo, emailMergeService, githubPersonEmailService, textSimilarityService, peopleStatsService, projectUpdateSettingsService, projectCollaboratorService, workingHoursSettingsService, projectGithubPersonService, llmAPIKeyService)
 	workingHoursSettingsHandler := handlers.NewWorkingHoursSettingsHandler(workingHoursSettingsService)
+	llmAPIKeyHandler := handlers.NewLLMAPIKeyHandler(llmAPIKeyService, projectService, projectCollaboratorService)
 	healthHandler := handlers.NewHealthHandler()
 	notFoundHandler := handlers.NewNotFoundHandler()
 
@@ -262,6 +267,11 @@ func setupRoutes(router *gin.Engine, userService *services.UserService, projectS
 		projects.POST("/:id/settings/update-settings", projectHandler.UpdateProjectUpdateSettings)
 		projects.GET("/:id/working-hours-settings", workingHoursSettingsHandler.WorkingHoursSettingsForm)
 		projects.POST("/:id/working-hours-settings", workingHoursSettingsHandler.UpdateWorkingHoursSettings)
+
+		// LLM API Key routes
+		projects.GET("/:id/llm-settings", llmAPIKeyHandler.ViewLLMSettings)
+		projects.POST("/:id/llm/api-key", llmAPIKeyHandler.CreateOrUpdateAPIKey)
+		projects.DELETE("/:id/llm/api-key", llmAPIKeyHandler.DeleteAPIKey)
 		projects.POST("/:id/settings/delete", projectHandler.DeleteProject)
 		projects.GET("/:id/collaborators", projectHandler.ViewProjectCollaborators)
 		projects.POST("/:id/collaborators/add", projectHandler.AddProjectCollaborator)
@@ -317,6 +327,7 @@ func loadTemplates(router *gin.Engine) {
 		filepath.Join(cwd, "web/templates/projects/collaborators.html"),
 		filepath.Join(cwd, "web/templates/projects/person_stats.html"),
 		filepath.Join(cwd, "web/templates/projects/repository.html"),
+		filepath.Join(cwd, "web/templates/projects/llm_settings.html"),
 		filepath.Join(cwd, "web/templates/error.html"),
 		filepath.Join(cwd, "web/templates/404.html"),
 	)

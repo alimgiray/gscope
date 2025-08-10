@@ -1,55 +1,102 @@
 {{define "project_view"}} {{template "header" .}}
 
 <div class="card">
-    <div class="flex justify-between items-center">
-        <div class="card-header">{{.Project.Name}}</div>
-        <div class="flex gap-2">
-            <a href="/projects/{{.Project.ID}}/collaborators" class="text-blue-400 hover:text-blue-300 text-xs">👥 Collaborators</a>
-            <a href="/projects/{{.Project.ID}}/settings" class="text-green-400 hover:text-green-300 text-xs">⚙ Settings</a>
-        </div>
+  <div class="flex justify-between items-center">
+    <div class="card-header">{{.Project.Name}}</div>
+    <div class="flex gap-2">
+      <a
+        href="/projects/{{.Project.ID}}/collaborators"
+        class="text-blue-400 hover:text-blue-300 text-xs"
+        >👥 Collaborators</a
+      >
+      <a
+        href="/projects/{{.Project.ID}}/settings"
+        class="text-green-400 hover:text-green-300 text-xs"
+        >⚙ Settings</a
+      >
     </div>
-    {{if .Project.Description}}
-    <p>{{.Project.Description}}</p>
-    {{end}}
-    <div class="text-xs text-gray-400 mt-2">
-        <div>Owner: {{.Owner.Name}} (@{{.Owner.Username}})</div>
-        <div>Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}</div>
-    </div>
+  </div>
+  {{if .Project.Description}}
+  <p>{{.Project.Description}}</p>
+  {{end}}
+  <div class="text-xs text-gray-400 mt-2">
+    <div>Owner: {{.Owner.Name}} (@{{.Owner.Username}})</div>
+    <div>Created: {{.Project.CreatedAt.Format "2006-01-02 15:04:05"}}</div>
+  </div>
 
-    
-    <!-- Toast Container -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
-    <div class="mt-4 flex gap-3">
-        <form method="POST" action="/projects/{{.Project.ID}}/fetch-repositories" class="inline">
-            <button type="submit" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="Import your GitHub repositories into this project">
-                Fetch Repositories
-            </button>
-        </form>
-        <button class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="trackAllRepositories('{{.Project.ID}}')" title="Start tracking all repositories in this project">
-            Track All
-        </button>
-        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="cloneAllRepositories('{{.Project.ID}}')" title="Clone all repositories to local storage">
-            Clone All
-        </button>
-        <button class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="fetchAllRepositories('{{.Project.ID}}')" title="Fetch latest data from GitHub for all repositories">
-            Fetch Github All
-        </button>
-        <button class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="analyzeAllRepositories('{{.Project.ID}}')" title="Analyze all repositories for statistics">
-            Analyze All
-        </button>
-        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" onclick="updateAllRepositories('{{.Project.ID}}')" title="Update all repositories (fetch, analyze, etc.)">
-            Update All
-        </button>
-        <a href="/projects/{{.Project.ID}}/emails" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="Manage and merge contributor emails">
-            Emails
-        </a>
-        <a href="/projects/{{.Project.ID}}/people" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="View and associate GitHub users with emails">
-            People
-        </a>
-        <a href="/projects/{{.Project.ID}}/reports" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium" title="View analytics and reports for this project">
-            Reports
-        </a>
-    </div>
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+  <div class="mt-4 flex gap-3">
+    <form
+      method="POST"
+      action="/projects/{{.Project.ID}}/fetch-repositories"
+      class="inline"
+    >
+      <button
+        type="submit"
+        class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+        title="Import your GitHub repositories into this project"
+      >
+        Fetch Repositories
+      </button>
+    </form>
+    <button
+      class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      onclick="trackAllRepositories('{{.Project.ID}}')"
+      title="Start tracking all repositories in this project"
+    >
+      Track All
+    </button>
+    <button
+      class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      onclick="cloneAllRepositories('{{.Project.ID}}')"
+      title="Clone all repositories to local storage"
+    >
+      Clone All
+    </button>
+    <button
+      class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      onclick="fetchAllRepositories('{{.Project.ID}}')"
+      title="Fetch latest data from GitHub for all repositories"
+    >
+      Fetch Github All
+    </button>
+    <button
+      class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      onclick="analyzeAllRepositories('{{.Project.ID}}')"
+      title="Analyze all repositories for statistics"
+    >
+      Analyze All
+    </button>
+    <button
+      class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      onclick="updateAllRepositories('{{.Project.ID}}')"
+      title="Update all repositories (fetch, analyze, etc.)"
+    >
+      Update All
+    </button>
+    <a
+      href="/projects/{{.Project.ID}}/emails"
+      class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      title="Manage and merge contributor emails"
+    >
+      Emails
+    </a>
+    <a
+      href="/projects/{{.Project.ID}}/people"
+      class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      title="View and associate GitHub users with emails"
+    >
+      People
+    </a>
+    <a
+      href="/projects/{{.Project.ID}}/reports"
+      class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors duration-200 text-sm font-medium"
+      title="View analytics and reports for this project"
+    >
+      Reports
+    </a>
+  </div>
 </div>
 
 <!-- Help Section -->
